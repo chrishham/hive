@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import fcntl
 import os
 import pty
+import struct
 import subprocess
+import termios
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from hive.persistence import StatePersistence
 from hive.session import Session, SessionState
+
+# Default sane terminal size; the frontend can resize via send_keys later
+_WINSIZE = struct.pack("HHHH", 24, 80, 0, 0)
+
+
+def _make_ctty():
+    """Make the slave fd (stdin) the controlling TTY for this process."""
+    # Already have setsid via start_new_session=True, but call again
+    # defensively in case it's a no-op. Then claim slave as ctty.
+    try:
+        os.setsid()
+    except OSError:
+        pass
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)  # stdin (== slave_fd) becomes ctty
 
 
 class SessionManager:
@@ -34,6 +51,7 @@ class SessionManager:
             raise ValueError(f"session name '{name}' already exists")
 
         master_fd, slave_fd = pty.openpty()
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, _WINSIZE)
         env = {
             **os.environ,
             "TERM": "xterm-256color",
@@ -58,6 +76,7 @@ class SessionManager:
                 stderr=slave_fd,
                 start_new_session=True,
                 close_fds=True,
+                preexec_fn=_make_ctty,
             )
         finally:
             os.close(slave_fd)
@@ -144,6 +163,7 @@ class SessionManager:
             return  # already running
 
         master_fd, slave_fd = pty.openpty()
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, _WINSIZE)
         env = {**os.environ, "TERM": "xterm-256color"}
         cmd = list(self.claude_command) + [
             "--dangerously-skip-permissions",
@@ -165,6 +185,7 @@ class SessionManager:
                 stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
                 start_new_session=True,
                 close_fds=True,
+                preexec_fn=_make_ctty,
             )
         finally:
             os.close(slave_fd)

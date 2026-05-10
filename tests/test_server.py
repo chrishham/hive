@@ -178,3 +178,52 @@ async def test_jsonl_discovery_timeout_marks_dead(tmp_path, monkeypatch):
                     break
                 await asyncio.sleep(0.1)
             assert sess.state.value == "dead", f"expected dead, got {sess.state.value}"
+
+
+async def test_jsonl_discovery_falls_back_to_existing(client, app, tmp_path, monkeypatch):
+    """If no new JSONL appears, discovery should bind to the most-recent
+    existing one (claude often appends to a prior session file)."""
+    import json
+    import hive.server as server_mod
+
+    monkeypatch.setattr(server_mod, "JSONL_DISCOVERY_TIMEOUT", 8.0)
+    monkeypatch.setattr(server_mod, "JSONL_DISCOVERY_POLL", 0.1)
+
+    project = tmp_path / "fbproj"; project.mkdir()
+    encoded = str(project).replace("/", "-")
+    target_dir = tmp_path / "claude_projects" / encoded
+    target_dir.mkdir(parents=True)
+    # Pre-create an OLD JSONL with mtime in the past
+    old_jsonl = target_dir / "old-session-uuid.jsonl"
+    old_jsonl.write_text(json.dumps({
+        "type": "assistant",
+        "timestamp": "2026-01-01T00:00:00+00:00",
+        "message": {"stop_reason": "end_turn"},
+    }) + "\n")
+    # Set mtime far in the past
+    import os
+    os.utime(old_jsonl, (1700000000, 1700000000))
+
+    # Replace claude_command with one that does NOT write a new jsonl,
+    # so discovery has to fall back to the old one.
+    app.state.manager.claude_command = ["sleep", "30"]
+
+    r = await client.post(
+        "/sessions",
+        json={"project_path": str(project), "name": "fbproj-001"},
+    )
+    sid = r.json()["id"]
+    sess = app.state.manager.get(sid)
+    try:
+        # Wait for fallback to trigger (happens at 5s, give it 7s total)
+        deadline = asyncio.get_event_loop().time() + 7
+        while asyncio.get_event_loop().time() < deadline:
+            if sess.jsonl_path is not None:
+                break
+            await asyncio.sleep(0.1)
+        assert sess.jsonl_path == old_jsonl, (
+            f"expected fallback to {old_jsonl}, got {sess.jsonl_path}"
+        )
+        assert sess.claude_session_id == "old-session-uuid"
+    finally:
+        app.state.manager.kill(sid)

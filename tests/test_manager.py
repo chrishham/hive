@@ -181,3 +181,22 @@ def test_save_state_persists_active_sessions(
         assert data["sessions"][0]["claude_session_id"] == "manually-set-uuid"
     finally:
         mgr.kill(s.id)
+
+
+def test_spawn_sets_pty_winsize(manager, tmp_path):
+    """The spawned PTY must have a non-zero window size or TUIs render nothing."""
+    import fcntl
+    import struct
+    import termios
+
+    project = tmp_path / "wsize"
+    project.mkdir()
+    s = manager.spawn(project_path=project, name="wsize-001")
+    try:
+        size = struct.pack("HHHH", 0, 0, 0, 0)
+        result = fcntl.ioctl(s.pty_master_fd, termios.TIOCGWINSZ, size)
+        rows, cols, _, _ = struct.unpack("HHHH", result)
+        assert rows > 0
+        assert cols > 0
+    finally:
+        manager.kill(s.id)

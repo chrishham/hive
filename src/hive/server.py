@@ -26,6 +26,14 @@ def _encode_project_path(p: Path) -> str:
     return str(p).replace("/", "-")
 
 
+def _bind(s, manager, watcher, jsonl_path):
+    """Bind a session to a discovered JSONL file."""
+    s.jsonl_path = jsonl_path
+    s.claude_session_id = jsonl_path.stem
+    manager.save_state()
+    watcher.bind(s.id, jsonl_path)
+
+
 async def _discover_and_bind_jsonl(
     manager: SessionManager,
     watcher: StateWatcher,
@@ -40,22 +48,27 @@ async def _discover_and_bind_jsonl(
     spawn_time = s.created_at.timestamp()
     encoded_dir = manager.claude_projects_dir / _encode_project_path(s.project_path)
     deadline = asyncio.get_event_loop().time() + JSONL_DISCOVERY_TIMEOUT
+    fallback_after = asyncio.get_event_loop().time() + 5.0
+
     while asyncio.get_event_loop().time() < deadline:
         if encoded_dir.exists():
-            candidates = sorted(
-                (p for p in encoded_dir.glob("*.jsonl")
-                 if p.stat().st_mtime >= spawn_time - 1),
+            all_jsonls = sorted(
+                encoded_dir.glob("*.jsonl"),
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
-            if candidates:
-                jsonl = candidates[0]
-                s.jsonl_path = jsonl
-                s.claude_session_id = jsonl.stem
-                manager.save_state()
-                watcher.bind(session_id, jsonl)
+            # Phase 1: prefer a JSONL created/modified at or after spawn
+            fresh = [p for p in all_jsonls if p.stat().st_mtime >= spawn_time - 1]
+            if fresh:
+                _bind(s, manager, watcher, fresh[0])
+                return
+            # Phase 2: after a few seconds with no fresh file, accept the
+            # most-recent existing JSONL — claude likely resumed it.
+            if all_jsonls and asyncio.get_event_loop().time() >= fallback_after:
+                _bind(s, manager, watcher, all_jsonls[0])
                 return
         await asyncio.sleep(JSONL_DISCOVERY_POLL)
+
     log.error("session %s: jsonl never appeared", session_id)
     s = manager.get(session_id)
     if s is not None and s.state != SessionState.DEAD:
