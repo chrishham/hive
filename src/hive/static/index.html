@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hive</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <header>
+      <h1>Hive</h1>
+      <button id="new-session-btn" title="New session">+</button>
+    </header>
+    <ul id="session-list"></ul>
+  </aside>
+  <main id="terminal-pane">
+    <div id="terminal-empty" class="placeholder">
+      Select a session to view its terminal.
+    </div>
+    <div id="terminal-host" hidden></div>
+  </main>
+
+  <dialog id="new-session-dialog">
+    <form method="dialog">
+      <h2>New session</h2>
+      <label>Project path
+        <input name="project_path" type="text" required
+               placeholder="/mnt/data/projects/yourapp">
+      </label>
+      <label>Name
+        <input name="name" type="text" required
+               placeholder="yourapp-001">
+      </label>
+      <menu>
+        <button value="cancel" type="reset">Cancel</button>
+        <button value="ok" id="new-session-submit">Create</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
