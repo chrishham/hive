@@ -72,6 +72,9 @@ class SessionListItem(ListItem):
         model_text = ""
         if d.model:
             model_text = f"  {d.model}"
+        ctx = d.context_bar()
+        if ctx:
+            model_text += f"  ctx:{ctx}"
         self.query_one("#sl-model", Label).update(model_text)
 
         url_lines = []

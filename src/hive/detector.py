@@ -32,6 +32,8 @@ MODEL_PATTERN = re.compile(r"(Opus|Sonnet|Haiku)\s+(\d+\.\d+)(?:\s+\((\d+[KMG])\
 
 URL_PATTERN = re.compile(r"(?:https?://)?(?:localhost|127\.0\.0\.1):(\d{2,5})")
 
+CONTEXT_PCT_PATTERN = re.compile(r"ctx:[█░]+ (\d+)%")
+
 
 def detect_state(pane_text: str) -> SessionState:
     if not pane_text.strip():
@@ -58,6 +60,13 @@ def detect_model(pane_text: str) -> tuple[str | None, str | None]:
     version = match.group(2)
     context = match.group(3)
     return f"{name}-{version}", context
+
+
+def detect_context_pct_from_pane(pane_text: str) -> int | None:
+    match = CONTEXT_PCT_PATTERN.search(pane_text[-500:])
+    if match:
+        return min(int(match.group(1)), 100)
+    return None
 
 
 def detect_urls(scrollback: str) -> list[str]:

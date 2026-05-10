@@ -14,7 +14,7 @@ from textual.containers import Horizontal
 from textual.widgets import Label
 
 from hive.config import HiveConfig, HiveState
-from hive.detector import SessionState, detect_model, detect_state, detect_urls, probe_url
+from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
 from hive.tmux import TmuxClient
 from hive.widgets.dialogs import (
     CloneScreen,
@@ -85,7 +85,7 @@ class HiveApp(App):
                 self.state.remove_session(name)
                 continue
             session_id = info.get("claude_session_id", "")
-            cmd = f"claude --name {name}"
+            cmd = f"claude --dangerously-skip-permissions --name {name}"
             if session_id:
                 cmd += f" --resume {session_id}"
             else:
@@ -124,6 +124,8 @@ class HiveApp(App):
 
             project_path = self.state.sessions.get(name, {}).get("project_path", "~")
 
+            context_pct = detect_context_pct_from_pane(pane_text)
+
             data = SessionData(
                 name=name,
                 project_path=project_path,
@@ -131,6 +133,7 @@ class HiveApp(App):
                 state=state,
                 model=model,
                 context_str=context_str,
+                context_pct=context_pct,
                 urls=urls,
                 preview_text=pane_text,
             )
@@ -267,7 +270,7 @@ class HiveApp(App):
         return f"{project_name}-{i:03d}"
 
     async def _create_session(self, project_path: str, session_name: str, resume_id: str | None = None) -> None:
-        cmd = f"claude --name {session_name}"
+        cmd = f"claude --dangerously-skip-permissions --name {session_name}"
         if resume_id:
             cmd += f" --resume {resume_id}"
         window_idx = self.tmux.new_window(session_name, project_path, cmd)
