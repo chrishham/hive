@@ -52,7 +52,16 @@ function detachTerminal() {
   terminalHost.replaceChildren();
   terminalHost.hidden = true;
   terminalEmpty.hidden = false;
+  terminalEmpty.textContent = 'Select a session to view its terminal.';
   activeSessionId = null;
+}
+
+function showFatalError(msg) {
+  // Surface the failure in the main panel instead of leaving the user
+  // staring at a stale placeholder.
+  terminalHost.hidden = true;
+  terminalEmpty.hidden = false;
+  terminalEmpty.textContent = msg;
 }
 
 function attachToSession(id) {
@@ -63,16 +72,39 @@ function attachToSession(id) {
   terminalEmpty.hidden = true;
   terminalHost.hidden = false;
 
-  activeTerm = new Terminal({
-    convertEol: true,
-    cursorBlink: true,
-    fontSize: 13,
-    fontFamily: 'monospace',
-  });
-  activeFit = new FitAddon.FitAddon();
-  activeTerm.loadAddon(activeFit);
-  activeTerm.open(terminalHost);
-  activeFit.fit();
+  if (typeof Terminal === 'undefined') {
+    showFatalError('xterm.js failed to load. Check your network/CSP and reload.');
+    return;
+  }
+  // FitAddon UMD bundle exposes the constructor at either FitAddon.FitAddon or
+  // FitAddon directly depending on bundler quirks; tolerate both.
+  const FitCtor = (typeof FitAddon !== 'undefined' && FitAddon.FitAddon)
+    ? FitAddon.FitAddon
+    : (typeof FitAddon === 'function' ? FitAddon : null);
+  if (!FitCtor) {
+    showFatalError('xterm-addon-fit failed to load. Check your network/CSP and reload.');
+    return;
+  }
+
+  try {
+    activeTerm = new Terminal({
+      convertEol: true,
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: 'monospace',
+    });
+    activeFit = new FitCtor();
+    activeTerm.loadAddon(activeFit);
+    activeTerm.open(terminalHost);
+    // Defer fit() one frame so the browser computes layout for terminal-host.
+    requestAnimationFrame(() => {
+      try { activeFit.fit(); } catch (_) {}
+    });
+  } catch (e) {
+    showFatalError(`Terminal init failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
 
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${wsProto}//${location.host}/ws/pty/${id}`);
