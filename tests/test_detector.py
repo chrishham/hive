@@ -3,27 +3,35 @@ from hive.detector import SessionState, detect_state, detect_model, detect_urls,
 
 class TestDetectState:
     def test_waiting_prompt_box(self):
-        pane = "some output\n\n╭─────────────────────╮\n│ > _                 │\n╰─────────────────────╯\n"
+        pane = "Claude Code v2.1\nsome output\n\n╭─────────────────────╮\n│ > _                 │\n╰─────────────────────╯\n"
         assert detect_state(pane) == SessionState.WAITING
 
     def test_waiting_arrow_prompt(self):
-        pane = "some output\n❯ \n"
+        pane = "Claude Code v2.1\nsome output\n❯ \n"
+        assert detect_state(pane) == SessionState.WAITING
+
+    def test_waiting_permission_mode(self):
+        pane = "Claude Code v2.1\nsome output\n❯❯ bypass permissions on (shift+tab to cycle)\n"
         assert detect_state(pane) == SessionState.WAITING
 
     def test_working_spinner(self):
-        pane = "some output\n⠋ Thinking...\n"
+        pane = "Claude Code v2.1\nsome output\n⠋ Thinking...\n"
         assert detect_state(pane) == SessionState.WORKING
 
     def test_working_tool_call(self):
-        pane = "some output\n  Running: pytest tests/ -v\n"
+        pane = "Claude Code v2.1\nsome output\n  Running: pytest tests/ -v\n"
         assert detect_state(pane) == SessionState.WORKING
 
     def test_empty_pane(self):
         pane = ""
-        assert detect_state(pane) == SessionState.WORKING
+        assert detect_state(pane) == SessionState.BOOTSTRAPPING
 
-    def test_default_unknown(self):
-        pane = "some random output\nno known pattern\n"
+    def test_bootstrapping_no_banner(self):
+        pane = "Loading MCP servers...\n"
+        assert detect_state(pane) == SessionState.BOOTSTRAPPING
+
+    def test_default_working(self):
+        pane = "Claude Code v2.1\nsome random output\nno known pattern\n"
         assert detect_state(pane) == SessionState.WORKING
 
 

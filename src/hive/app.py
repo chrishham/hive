@@ -158,8 +158,9 @@ class HiveApp(App):
         list_view.focus()
 
     def _rebuild_list(self, list_view: SessionListView) -> None:
+        ready = [s for s in self.session_data_map.values() if s.state != SessionState.BOOTSTRAPPING]
         sorted_sessions = sorted(
-            self.session_data_map.values(),
+            ready,
             key=lambda s: (s.state != SessionState.WAITING, s.name),
         )
         new_names = [s.name for s in sorted_sessions]
@@ -205,15 +206,21 @@ class HiveApp(App):
     def _update_header(self) -> None:
         total = len(self.session_data_map)
         waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+        booting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.BOOTSTRAPPING)
         header_text = f"hive — Claude Code Orchestrator    {total} sessions"
         if waiting:
             header_text += f" ({waiting}●)"
+        if booting:
+            header_text += f"  loading {booting}..."
         self.query_one("#header", Label).update(header_text)
 
     def _update_tmux_status(self) -> None:
         total = len(self.session_data_map)
         waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+        booting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.BOOTSTRAPPING)
         parts = [f"hive: {total} sessions"]
+        if booting:
+            parts.append(f"loading {booting}")
         if waiting:
             parts.append(f"● {waiting} waiting")
         for s in self.session_data_map.values():

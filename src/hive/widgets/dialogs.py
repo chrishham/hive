@@ -131,6 +131,7 @@ class SessionOptionsScreen(ModalScreen[dict | None]):
             with Horizontal(id="options-buttons"):
                 yield Button("Create", variant="primary", id="btn-create")
                 yield Button("Cancel", id="btn-cancel")
+            yield Label("  d: delete selected session", id="options-hint")
 
     def on_key(self, event) -> None:
         lv = self.query_one("#session-picker", ListView)
@@ -140,6 +141,10 @@ class SessionOptionsScreen(ModalScreen[dict | None]):
             event.stop()
         elif event.key == "down":
             lv.action_cursor_down()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "d":
+            self._delete_selected(lv)
             event.prevent_default()
             event.stop()
         elif event.key == "enter":
@@ -152,6 +157,22 @@ class SessionOptionsScreen(ModalScreen[dict | None]):
             self._submit()
         else:
             self.dismiss(None)
+
+    def _delete_selected(self, lv: ListView) -> None:
+        item = lv.highlighted_child
+        if not isinstance(item, ListItem) or item.name == "__new__":
+            return
+        idx = lv.index
+        session_id = item.name
+        encoded = self.project_path.replace("/", "-")
+        jsonl_path = CLAUDE_PROJECTS_DIR / encoded / f"{session_id}.jsonl"
+        if jsonl_path.exists():
+            jsonl_path.unlink()
+        item.remove()
+        self.resumable = [s for s in self.resumable if s["id"] != session_id]
+        child_count = len(list(lv.children))
+        if child_count > 0:
+            lv.index = min(idx, child_count - 1) if idx > 0 else 0
 
     def _submit(self) -> None:
         lv = self.query_one("#session-picker", ListView)

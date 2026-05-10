@@ -11,12 +11,15 @@ from pathlib import Path
 class SessionState(Enum):
     WAITING = "waiting"
     WORKING = "working"
+    BOOTSTRAPPING = "bootstrapping"
 
 
 PROMPT_PATTERNS = [
     re.compile(r"[❯>]\s*$", re.MULTILINE),
     re.compile(r"╭.*╮.*│.*>.*│.*╰.*╯", re.DOTALL),
     re.compile(r"│\s*>\s*│", re.MULTILINE),
+    re.compile(r"❯❯\s+(bypass permissions|plan|default)", re.MULTILINE),
+    re.compile(r"\(shift\+tab to cycle\)"),
 ]
 
 WORKING_PATTERNS = [
@@ -34,10 +37,20 @@ URL_PATTERN = re.compile(r"(?:https?://)?(?:localhost|127\.0\.0\.1):(\d{2,5})")
 
 CONTEXT_PCT_PATTERN = re.compile(r"ctx:[█░]+ (\d+)%")
 
+LOADED_PATTERNS = [
+    re.compile(r"Claude Code"),
+    re.compile(r"Welcome back"),
+    re.compile(r"Tips for getting started"),
+]
+
 
 def detect_state(pane_text: str) -> SessionState:
     if not pane_text.strip():
-        return SessionState.WORKING
+        return SessionState.BOOTSTRAPPING
+
+    loaded = any(p.search(pane_text) for p in LOADED_PATTERNS)
+    if not loaded:
+        return SessionState.BOOTSTRAPPING
 
     last_chunk = pane_text[-500:]
 
