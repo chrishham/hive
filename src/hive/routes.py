@@ -66,4 +66,16 @@ def build_router(manager: SessionManager, watcher: StateWatcher) -> APIRouter:
     def healthz():
         return {"sessions": len(manager.list()), "ok": True}
 
+    @router.get("/projects")
+    def list_projects():
+        projects = []
+        if manager.projects_root.exists():
+            for entry in sorted(manager.projects_root.iterdir()):
+                if entry.is_dir():
+                    projects.append({
+                        "name": entry.name,
+                        "path": str(entry),
+                    })
+        return {"projects": projects}
+
     return router

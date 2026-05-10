@@ -144,11 +144,13 @@ def build_app(
     claude_projects_dir: Path | None = None,
     state_path: Path | None = None,
     static_dir: Path | None = None,
+    projects_root: Path | None = None,
 ) -> FastAPI:
     manager = SessionManager(
         claude_command=claude_command,
         claude_projects_dir=claude_projects_dir,
         state_path=state_path,
+        projects_root=projects_root,
     )
     watcher = StateWatcher(poll_interval=0.5)
     bridge = PtyBridge()

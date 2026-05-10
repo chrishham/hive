@@ -99,16 +99,63 @@ window.addEventListener('resize', () => {
   if (activeFit) activeFit.fit();
 });
 
-newBtn.addEventListener('click', () => dialog.showModal());
+const projectSelect = document.getElementById('project-select');
+const customToggle = document.getElementById('custom-path-toggle');
+const customLabel = document.getElementById('custom-path-label');
+const customInput = customLabel.querySelector('input[name="custom_path"]');
+
+customToggle.addEventListener('change', () => {
+  customLabel.hidden = !customToggle.checked;
+  if (customToggle.checked) {
+    projectSelect.removeAttribute('required');
+    customInput.setAttribute('required', '');
+  } else {
+    projectSelect.setAttribute('required', '');
+    customInput.removeAttribute('required');
+  }
+});
+
+async function refreshProjectList() {
+  projectSelect.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const r = await fetch('/projects');
+    const data = await r.json();
+    projectSelect.innerHTML = '';
+    if (data.projects.length === 0) {
+      projectSelect.innerHTML = '<option value="">(no projects in ~/Projects)</option>';
+    } else {
+      for (const p of data.projects) {
+        const opt = document.createElement('option');
+        opt.value = p.path;
+        opt.textContent = p.name;
+        projectSelect.appendChild(opt);
+      }
+    }
+  } catch (e) {
+    projectSelect.innerHTML = '<option value="">(failed to load)</option>';
+  }
+}
+
+newBtn.addEventListener('click', async () => {
+  await refreshProjectList();
+  customToggle.checked = false;
+  customLabel.hidden = true;
+  projectSelect.setAttribute('required', '');
+  customInput.removeAttribute('required');
+  dialog.showModal();
+});
 
 dialog.addEventListener('close', async () => {
   if (dialog.returnValue !== 'ok') return;
   const fd = new FormData(dialogForm);
+  const projectPath = customToggle.checked
+    ? fd.get('custom_path')
+    : fd.get('project_path');
   const r = await fetch('/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      project_path: fd.get('project_path'),
+      project_path: projectPath,
       name: fd.get('name'),
     }),
   });

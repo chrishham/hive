@@ -24,9 +24,18 @@
   <dialog id="new-session-dialog">
     <form method="dialog">
       <h2>New session</h2>
-      <label>Project path
-        <input name="project_path" type="text" required
-               placeholder="/mnt/data/projects/yourapp">
+      <label>Project
+        <select name="project_path" id="project-select" required>
+          <option value="">Loading…</option>
+        </select>
+      </label>
+      <label>
+        <input type="checkbox" id="custom-path-toggle">
+        Use a custom path instead
+      </label>
+      <label id="custom-path-label" hidden>Custom project path
+        <input name="custom_path" type="text"
+               placeholder="/path/to/project">
       </label>
       <label>Name
         <input name="name" type="text" required

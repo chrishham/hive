@@ -117,3 +117,63 @@ def test_create_with_missing_claude_binary_returns_400(tmp_path):
     )
     assert r.status_code == 400
     assert "claude binary not found" in r.json()["detail"].lower()
+
+
+def test_projects_list_returns_subdirs(tmp_path):
+    """GET /projects returns immediate subdirectories of projects_root."""
+    import sys
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from hive.manager import SessionManager
+    from hive.routes import build_router
+    from hive.watcher import StateWatcher
+
+    projects_root = tmp_path / "Projects"
+    projects_root.mkdir()
+    (projects_root / "alpha").mkdir()
+    (projects_root / "beta").mkdir()
+    (projects_root / "gamma").mkdir()
+    (projects_root / "not-a-dir.txt").write_text("ignore me")
+
+    fake = sys.executable  # any binary; we don't spawn anything in this test
+    mgr = SessionManager(
+        claude_command=[fake],
+        claude_projects_dir=tmp_path / "claude_projects",
+        state_path=tmp_path / "state.json",
+        projects_root=projects_root,
+    )
+    app = FastAPI()
+    app.include_router(build_router(mgr, StateWatcher(poll_interval=0.05)))
+    client = TestClient(app)
+    r = client.get("/projects")
+    assert r.status_code == 200
+    body = r.json()
+    names = [p["name"] for p in body["projects"]]
+    assert names == ["alpha", "beta", "gamma"]  # alphabetical
+    paths = [p["path"] for p in body["projects"]]
+    for p in paths:
+        assert p.startswith(str(projects_root))
+
+
+def test_projects_list_empty_when_root_missing(tmp_path):
+    """GET /projects returns empty list when projects_root doesn't exist."""
+    import sys
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from hive.manager import SessionManager
+    from hive.routes import build_router
+    from hive.watcher import StateWatcher
+
+    fake = sys.executable
+    mgr = SessionManager(
+        claude_command=[fake],
+        claude_projects_dir=tmp_path / "claude_projects",
+        state_path=tmp_path / "state.json",
+        projects_root=tmp_path / "does-not-exist",
+    )
+    app = FastAPI()
+    app.include_router(build_router(mgr, StateWatcher(poll_interval=0.05)))
+    client = TestClient(app)
+    r = client.get("/projects")
+    assert r.status_code == 200
+    assert r.json() == {"projects": []}

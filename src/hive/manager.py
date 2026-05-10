@@ -34,6 +34,7 @@ class SessionManager:
         claude_command: list[str] | None = None,
         claude_projects_dir: Path | None = None,
         state_path: Path | None = None,
+        projects_root: Path | None = None,
     ):
         self.claude_command = claude_command or ["claude"]
         self.claude_projects_dir = (
@@ -44,6 +45,7 @@ class SessionManager:
             state_path
             or Path.home() / ".config" / "hive" / "state.json"
         )
+        self.projects_root = projects_root or Path.home() / "Projects"
         self._sessions: dict[str, Session] = {}
 
     def spawn(self, project_path: Path, name: str) -> Session:

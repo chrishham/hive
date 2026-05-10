@@ -28,6 +28,12 @@ def main() -> None:
         default="claude",
         help="claude binary name or path (default: claude on PATH)",
     )
+    parser.add_argument(
+        "--projects-root",
+        type=Path,
+        default=Path.home() / "Projects",
+        help="Directory listed in the 'New session' picker (default: ~/Projects)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -41,6 +47,7 @@ def main() -> None:
         claude_projects_dir=args.claude_projects_dir,
         state_path=args.state_path,
         static_dir=static_dir,
+        projects_root=args.projects_root,
     )
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
