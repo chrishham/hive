@@ -234,6 +234,7 @@ class HiveApp(App):
         self.state.add_session(session_name, project_path, window_idx, "")
         self.state.save_default()
 
+    @work
     async def action_new_session(self) -> None:
         projects = self._scan_projects()
         result = await self.push_screen_wait(ProjectPickerScreen(projects))
@@ -249,6 +250,7 @@ class HiveApp(App):
         name = options["name"] or self._next_session_name(project_name)
         await self._create_session(project_path, name, options["continue_session"])
 
+    @work
     async def action_free_session(self) -> None:
         options = await self.push_screen_wait(SessionOptionsScreen("home (~)", has_previous=False))
         if options is None:
@@ -256,6 +258,7 @@ class HiveApp(App):
         name = options["name"] or self._next_session_name("free")
         await self._create_session(str(Path.home()), name)
 
+    @work
     async def action_clone_session(self) -> None:
         result = await self.push_screen_wait(CloneScreen(self.config.clone_path))
         if result is None:
@@ -277,6 +280,7 @@ class HiveApp(App):
         name = self._next_session_name(repo_name)
         await self._create_session(target, name)
 
+    @work
     async def action_kill_session(self) -> None:
         list_view = self.query_one("#session-panel", SessionListView)
         data = list_view.get_session_data()
@@ -296,6 +300,7 @@ class HiveApp(App):
         self.tmux.kill_window(data.tmux_window)
         await self._create_session(data.project_path, data.name, continue_session=True)
 
+    @work
     async def action_rename_session(self) -> None:
         list_view = self.query_one("#session-panel", SessionListView)
         data = list_view.get_session_data()
