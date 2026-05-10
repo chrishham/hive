@@ -43,6 +43,7 @@ class HiveApp(App):
         Binding("R", "rename_session", "Rename", show=False, key_display="R"),
         Binding("u", "open_url", "URL", show=False),
         Binding("slash", "search", "Search", show=False),
+        Binding("enter", "attach_session", "Attach", show=False),
     ]
 
     def __init__(self) -> None:
@@ -70,6 +71,7 @@ class HiveApp(App):
         )
 
     async def on_mount(self) -> None:
+        self.query_one("#session-panel", SessionListView).focus()
         self.poll_sessions()
 
     @work(exclusive=True)
@@ -323,6 +325,12 @@ class HiveApp(App):
         first_live = next((u for u, alive in data.urls if alive), None)
         if first_live:
             webbrowser.open(f"http://{first_live}")
+
+    async def action_attach_session(self) -> None:
+        list_view = self.query_one("#session-panel", SessionListView)
+        data = list_view.get_session_data()
+        if data:
+            self.tmux.select_window(data.tmux_window)
 
     async def action_search(self) -> None:
         pass

@@ -41,6 +41,10 @@ SessionListItem {
     padding: 0 1;
 }
 
+SessionListItem.-highlight {
+    background: $primary 30%;
+}
+
 SessionListItem:hover {
     background: $primary 20%;
 }
