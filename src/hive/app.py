@@ -72,11 +72,13 @@ class HiveApp(App):
         self._restore_sessions()
         self.poll_sessions()
 
-    def _restore_sessions(self) -> None:
+    @work
+    async def _restore_sessions(self) -> None:
         if not self.state.sessions:
             return
         windows = self.tmux.list_windows()
         existing_names = {w["name"] for w in windows if w["index"] != 0}
+        to_restore = []
         for name, info in list(self.state.sessions.items()):
             if name in existing_names:
                 continue
@@ -84,14 +86,23 @@ class HiveApp(App):
             if not os.path.isdir(project_path):
                 self.state.remove_session(name)
                 continue
+            to_restore.append((name, info))
+
+        if not to_restore:
+            return
+
+        header = self.query_one("#header", Label)
+        for i, (name, info) in enumerate(to_restore):
+            header.update(f"hive — Restoring session {i + 1}/{len(to_restore)}: {name}")
             session_id = info.get("claude_session_id", "")
             cmd = f"claude --name {name}"
             if session_id:
                 cmd += f" --resume {session_id}"
             else:
                 cmd += " --continue"
-            window_idx = self.tmux.new_window(name, project_path, cmd)
+            window_idx = self.tmux.new_window(name, info["project_path"], cmd)
             self.state.sessions[name]["tmux_window"] = window_idx
+            await asyncio.sleep(0.3)
         self.state.save_default()
 
     @work(exclusive=True)
