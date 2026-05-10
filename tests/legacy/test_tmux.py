@@ -8,7 +8,7 @@ class TestTmuxClient:
     def setup_method(self):
         self.tmux = TmuxClient(session_name="test-hive")
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_session_exists_true(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         assert self.tmux.session_exists() is True
@@ -17,12 +17,12 @@ class TestTmuxClient:
             capture_output=True,
         )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_session_exists_false(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1)
         assert self.tmux.session_exists() is False
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_create_session(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.create_session()
@@ -36,7 +36,7 @@ class TestTmuxClient:
             capture_output=True,
         )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_list_windows(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -49,7 +49,7 @@ class TestTmuxClient:
             {"index": 2, "name": "other", "active": True},
         ]
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_capture_pane(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -63,7 +63,7 @@ class TestTmuxClient:
             text=True,
         )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_capture_pane_scrollback(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="scrollback\n")
         output = self.tmux.capture_pane_scrollback(1)
@@ -74,13 +74,20 @@ class TestTmuxClient:
             text=True,
         )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_new_window(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="3\n")
         idx = self.tmux.new_window("my-window", "/tmp/proj", "claude --name my-window")
         assert idx == 3
+        args = mock_run.call_args[0][0]
+        target_idx = args.index("-t") + 1
+        assert args[target_idx] == "test-hive:", (
+            "tmux new-window -t must use 'session:' (trailing colon) so tmux picks "
+            "the lowest unused index. Without the colon it targets the active window's "
+            "index and fails with 'index N in use'."
+        )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_kill_window(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.kill_window(2)
@@ -89,7 +96,7 @@ class TestTmuxClient:
             capture_output=True,
         )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_select_window(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.select_window(3)
@@ -98,17 +105,17 @@ class TestTmuxClient:
             capture_output=True,
         )
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_is_pane_alive_true(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="1\n")
         assert self.tmux.is_pane_alive(1) is True
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_is_pane_alive_false(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="0\n")
         assert self.tmux.is_pane_alive(1) is False
 
-    @patch("hive.tmux.subprocess.run")
+    @patch("hive_legacy.tmux.subprocess.run")
     def test_set_status_bar(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.set_status_bar("hive: 2 sessions | ● 1 waiting")

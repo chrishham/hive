@@ -59,7 +59,7 @@ class TmuxClient:
     def new_window(self, name: str, cwd: str, command: str) -> int:
         result = self._run(
             [
-                "tmux", "new-window", "-t", self.session_name,
+                "tmux", "new-window", "-t", f"{self.session_name}:",
                 "-n", name,
                 "-c", cwd,
                 "-P", "-F", "#{window_index}",

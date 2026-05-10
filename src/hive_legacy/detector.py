@@ -23,6 +23,9 @@ PROMPT_PATTERNS = [
 ]
 
 WORKING_PATTERNS = [
+    re.compile(r"[\d.]+k?\s+tokens?\s*[·\)]"),
+    re.compile(r"esc to interrupt"),
+    re.compile(r"⎿\s*Running[…\.]"),
     re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]"),
     re.compile(r"Thinking\.\.\."),
     re.compile(r"Running:"),
@@ -52,7 +55,8 @@ def detect_state(pane_text: str) -> SessionState:
     if not loaded:
         return SessionState.BOOTSTRAPPING
 
-    last_chunk = pane_text[-500:]
+    lines = pane_text.rstrip().split("\n")
+    last_chunk = "\n".join(lines[-30:])
 
     for pattern in WORKING_PATTERNS:
         if pattern.search(last_chunk):
