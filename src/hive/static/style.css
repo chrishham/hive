@@ -70,6 +70,9 @@ body {
 }
 #terminal-host { height: 100%; }
 
+/* The HTML `hidden` attribute must beat author display rules above. */
+[hidden] { display: none !important; }
+
 dialog {
   background: #232323; color: #e0e0e0;
   border: 1px solid #444; border-radius: 6px;
