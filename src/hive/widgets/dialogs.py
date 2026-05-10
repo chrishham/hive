@@ -48,11 +48,17 @@ class ProjectPickerScreen(ModalScreen[dict | None]):
     def on_input_changed(self, event: Input.Changed) -> None:
         query = event.value.lower()
         list_view = self.query_one("#picker-list", ListView)
-        for child in list_view.children:
+        first_visible = None
+        for i, child in enumerate(list_view.children):
             if isinstance(child, ListItem) and child.name:
                 proj = self._project_map.get(child.name, {})
                 text = proj.get("name", "").lower()
-                child.display = query in text
+                visible = query in text
+                child.display = visible
+                if visible and first_visible is None:
+                    first_visible = i
+        if first_visible is not None:
+            list_view.index = first_visible
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         path = event.item.name

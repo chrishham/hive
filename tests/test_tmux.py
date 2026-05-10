@@ -26,8 +26,13 @@ class TestTmuxClient:
     def test_create_session(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.create_session()
-        mock_run.assert_called_once_with(
+        assert mock_run.call_count == 2
+        mock_run.assert_any_call(
             ["tmux", "new-session", "-d", "-s", "test-hive", "-x", "200", "-y", "50"],
+            capture_output=True,
+        )
+        mock_run.assert_any_call(
+            ["tmux", "set-option", "-t", "test-hive", "mouse", "on"],
             capture_output=True,
         )
 

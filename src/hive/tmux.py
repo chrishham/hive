@@ -21,6 +21,7 @@ class TmuxClient:
         if command:
             args.append(command)
         self._run(args)
+        self._run(["tmux", "set-option", "-t", self.session_name, "mouse", "on"])
 
     def list_windows(self) -> list[dict]:
         result = self._run(
@@ -90,6 +91,9 @@ class TmuxClient:
 
     def rename_window(self, window_index: int, new_name: str) -> None:
         self._run(["tmux", "rename-window", "-t", f"{self.session_name}:{window_index}", new_name])
+
+    def kill_session(self) -> None:
+        self._run(["tmux", "kill-session", "-t", self.session_name])
 
     def attach(self) -> None:
         subprocess.run(["tmux", "attach-session", "-t", self.session_name])

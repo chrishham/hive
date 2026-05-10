@@ -34,7 +34,8 @@ class HiveApp(App):
     CSS_PATH = "hive.tcss"
 
     BINDINGS = [
-        Binding("q", "quit_app", "Quit", show=False),
+        Binding("Q", "quit_app", "Quit all", show=False, key_display="Q"),
+        Binding("d", "detach", "Detach", show=False),
         Binding("n", "new_session", "New", show=False),
         Binding("f", "free_session", "Free", show=False),
         Binding("g", "clone_session", "Clone", show=False),
@@ -54,6 +55,7 @@ class HiveApp(App):
         self.session_data_map: dict[str, SessionData] = {}
         self._last_pane_hash: dict[str, str] = {}
         self._last_change_time: dict[str, float] = {}
+        self._last_attached: str | None = None
 
     def compose(self) -> ComposeResult:
         waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
@@ -66,7 +68,7 @@ class HiveApp(App):
             yield SessionListView(id="session-panel")
             yield PreviewPane("(no session selected)", id="preview-panel")
         yield Label(
-            "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  q:quit",
+            "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  d:detach  Q:quit all",
             id="footer-bar",
         )
 
@@ -139,10 +141,11 @@ class HiveApp(App):
         self._update_tmux_status()
 
     def _rebuild_list(self, list_view: SessionListView) -> None:
-        highlighted_name = None
-        highlighted_item = list_view.highlighted_child
-        if isinstance(highlighted_item, SessionListItem):
-            highlighted_name = highlighted_item.data.name
+        target_name = self._last_attached
+        if not target_name:
+            highlighted_item = list_view.highlighted_child
+            if isinstance(highlighted_item, SessionListItem):
+                target_name = highlighted_item.data.name
 
         list_view.clear()
         sorted_sessions = sorted(
@@ -152,7 +155,7 @@ class HiveApp(App):
         restore_index = 0
         for i, data in enumerate(sorted_sessions):
             list_view.append(SessionListItem(data))
-            if data.name == highlighted_name:
+            if data.name == target_name:
                 restore_index = i
         if sorted_sessions:
             list_view.index = restore_index
@@ -192,6 +195,7 @@ class HiveApp(App):
     def on_list_view_selected(self, event: SessionListView.Selected) -> None:
         item = event.item
         if isinstance(item, SessionListItem):
+            self._last_attached = item.data.name
             self.tmux.select_window(item.data.tmux_window)
 
     def _scan_projects(self) -> list[dict]:
@@ -330,10 +334,15 @@ class HiveApp(App):
         list_view = self.query_one("#session-panel", SessionListView)
         data = list_view.get_session_data()
         if data:
+            self._last_attached = data.name
             self.tmux.select_window(data.tmux_window)
 
     async def action_search(self) -> None:
         pass
 
+    async def action_detach(self) -> None:
+        self.exit()
+
     async def action_quit_app(self) -> None:
+        self.tmux.kill_session()
         self.exit()
