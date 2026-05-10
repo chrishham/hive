@@ -14,19 +14,24 @@ class ProjectPickerScreen(ModalScreen[dict | None]):
     def __init__(self, projects: list[dict]) -> None:
         super().__init__()
         self.projects = projects
-        self._project_map: dict[str, dict] = {p["path"]: p for p in projects}
+        self._filtered: list[dict] = list(projects)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker-dialog"):
             yield Label("Select a project:", id="picker-title")
             yield Input(placeholder="Type to filter...", id="picker-filter")
-            yield ListView(
-                *[
-                    ListItem(Label(f"{p['name']}  {p['path']}  {p.get('age', '')}"), name=p["path"])
-                    for p in self.projects
-                ],
-                id="picker-list",
-            )
+            yield ListView(id="picker-list")
+
+    def on_mount(self) -> None:
+        self._populate_list()
+
+    def _populate_list(self) -> None:
+        list_view = self.query_one("#picker-list", ListView)
+        list_view.clear()
+        for p in self._filtered:
+            list_view.append(ListItem(Label(f"{p['name']}  {p['path']}  {p.get('age', '')}"), name=p["path"]))
+        if self._filtered:
+            list_view.index = 0
 
     def on_key(self, event) -> None:
         list_view = self.query_one("#picker-list", ListView)
@@ -47,18 +52,8 @@ class ProjectPickerScreen(ModalScreen[dict | None]):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         query = event.value.lower()
-        list_view = self.query_one("#picker-list", ListView)
-        first_visible = None
-        for i, child in enumerate(list_view.children):
-            if isinstance(child, ListItem) and child.name:
-                proj = self._project_map.get(child.name, {})
-                text = proj.get("name", "").lower()
-                visible = query in text
-                child.display = visible
-                if visible and first_visible is None:
-                    first_visible = i
-        if first_visible is not None:
-            list_view.index = first_visible
+        self._filtered = [p for p in self.projects if query in p["name"].lower()]
+        self._populate_list()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         path = event.item.name
