@@ -57,6 +57,18 @@ async def _discover_and_bind_jsonl(
                 return
         await asyncio.sleep(JSONL_DISCOVERY_POLL)
     log.error("session %s: jsonl never appeared", session_id)
+    s = manager.get(session_id)
+    if s is not None and s.state != SessionState.DEAD:
+        s.state = SessionState.DEAD
+        s.pid = None
+        if s.pty_master_fd is not None:
+            try:
+                os.close(s.pty_master_fd)
+            except OSError:
+                pass
+            s.pty_master_fd = None
+        bridge.unregister_pty(session_id)
+        await watcher.emit(session_id, SessionState.DEAD)
 
 
 async def _reap_dead_sessions(

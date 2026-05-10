@@ -44,6 +44,11 @@ def build_router(manager: SessionManager, watcher: StateWatcher) -> APIRouter:
             session = manager.spawn(project_path=project, name=req.name)
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
+        except FileNotFoundError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"claude binary not found: {e}",
+            )
         manager.save_state()
         return session_to_dict(session)
 

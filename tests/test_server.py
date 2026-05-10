@@ -130,3 +130,51 @@ async def test_jsonl_discovery_binds_within_5s(client, tmp_path):
         assert last_state in {"waiting", "working"}
     finally:
         await client.delete(f"/sessions/{sid}")
+
+
+async def test_jsonl_discovery_timeout_marks_dead(tmp_path, monkeypatch):
+    """If the JSONL never appears, the session transitions to DEAD."""
+    import hive.server as server_mod
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+
+    # Monkey-patch the timeout to 1s so the test runs quickly
+    monkeypatch.setattr(server_mod, "JSONL_DISCOVERY_TIMEOUT", 1.0)
+    monkeypatch.setattr(server_mod, "JSONL_DISCOVERY_POLL", 0.1)
+
+    # Create a fake claude that just sleeps, doesn't write JSONL
+    fake_no_jsonl = tmp_path / "fake_no_jsonl.py"
+    fake_no_jsonl.write_text(
+        "import signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+        "while True: time.sleep(60)\n"
+    )
+
+    # Build app with the non-writing claude
+    app = build_app(
+        claude_command=[sys.executable, str(fake_no_jsonl)],
+        claude_projects_dir=tmp_path / "claude_projects",
+        state_path=tmp_path / "state.json",
+        static_dir=tmp_path / "no-static",
+    )
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            project = tmp_path / "deadproj"
+            project.mkdir()
+            r = await client.post(
+                "/sessions",
+                json={"project_path": str(project), "name": "deadproj-001"},
+            )
+            sid = r.json()["id"]
+
+            # Wait up to 4s for DEAD transition (timeout is 1s + grace)
+            sess = app.state.manager.get(sid)
+            deadline = asyncio.get_event_loop().time() + 4
+            while asyncio.get_event_loop().time() < deadline:
+                if sess.state.value == "dead":
+                    break
+                await asyncio.sleep(0.1)
+            assert sess.state.value == "dead", f"expected dead, got {sess.state.value}"

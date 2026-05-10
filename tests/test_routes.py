@@ -90,3 +90,30 @@ def test_delete_session(client, manager, tmp_path):
 def test_delete_unknown_returns_404(client):
     r = client.delete("/sessions/does-not-exist")
     assert r.status_code == 404
+
+
+def test_create_with_missing_claude_binary_returns_400(tmp_path):
+    """If the claude binary doesn't exist, POST /sessions returns 400."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from hive.manager import SessionManager
+    from hive.routes import build_router
+    from hive.watcher import StateWatcher
+
+    mgr = SessionManager(
+        claude_command=["/nonexistent/path/to/claude-binary"],
+        claude_projects_dir=tmp_path / "claude_projects",
+        state_path=tmp_path / "state.json",
+    )
+    app = FastAPI()
+    app.include_router(build_router(mgr, StateWatcher(poll_interval=0.05)))
+    client = TestClient(app)
+
+    project = tmp_path / "p"
+    project.mkdir()
+    r = client.post(
+        "/sessions",
+        json={"project_path": str(project), "name": "p-001"},
+    )
+    assert r.status_code == 400
+    assert "claude binary not found" in r.json()["detail"].lower()
