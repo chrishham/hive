@@ -142,20 +142,6 @@ class HiveApp(App):
             key=lambda s: (s.state != SessionState.WAITING, s.name),
         )
 
-        new_names = [s.name for s in sorted_sessions]
-        old_names = [
-            item.data.name for item in list_view.children
-            if isinstance(item, SessionListItem)
-        ]
-
-        if new_names == old_names:
-            for item in list_view.children:
-                if isinstance(item, SessionListItem):
-                    updated = self.session_data_map.get(item.data.name)
-                    if updated:
-                        item.data = updated
-            return
-
         target_name = self._last_attached
         if not target_name:
             highlighted_item = list_view.highlighted_child
