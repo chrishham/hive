@@ -107,7 +107,12 @@ class TestTmuxClient:
     def test_set_status_bar(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.set_status_bar("hive: 2 sessions | ● 1 waiting")
-        mock_run.assert_called_once_with(
+        assert mock_run.call_count == 2
+        mock_run.assert_any_call(
+            ["tmux", "set-option", "-t", "test-hive", "status-left-length", "100"],
+            capture_output=True,
+        )
+        mock_run.assert_any_call(
             ["tmux", "set-option", "-t", "test-hive", "status-left", "hive: 2 sessions | ● 1 waiting"],
             capture_output=True,
         )

@@ -85,6 +85,7 @@ class TmuxClient:
         return result.stdout.strip() != "0"
 
     def set_status_bar(self, text: str) -> None:
+        self._run(["tmux", "set-option", "-t", self.session_name, "status-left-length", "100"])
         self._run(["tmux", "set-option", "-t", self.session_name, "status-left", text])
 
     def rename_window(self, window_index: int, new_name: str) -> None:

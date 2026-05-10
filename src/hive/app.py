@@ -177,6 +177,7 @@ class HiveApp(App):
         for s in self.session_data_map.values():
             if s.state == SessionState.WAITING:
                 parts.append(f"{s.name} ●")
+        parts.append("Ctrl+B 0 → dashboard")
         self.tmux.set_status_bar(" | ".join(parts))
 
     def on_list_view_highlighted(self, event: SessionListView.Highlighted) -> None:
