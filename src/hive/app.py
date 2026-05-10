@@ -127,6 +127,22 @@ class HiveApp(App):
             self.session_data_map.values(),
             key=lambda s: (s.state != SessionState.WAITING, s.name),
         )
+        new_names = [s.name for s in sorted_sessions]
+
+        existing: dict[str, SessionListItem] = {}
+        for item in list_view.children:
+            if isinstance(item, SessionListItem):
+                existing[item.data.name] = item
+
+        old_names = list(existing.keys())
+
+        if new_names == old_names:
+            for item in existing.values():
+                updated = self.session_data_map.get(item.data.name)
+                if updated:
+                    item.data = updated
+                    item.refresh_content()
+            return
 
         target_name = self._last_attached
         if not target_name:

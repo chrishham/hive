@@ -54,20 +54,31 @@ class SessionListItem(ListItem):
         self.data = data
 
     def compose(self) -> ComposeResult:
+        yield Label("", markup=True, id="sl-header")
+        yield Label("", id="sl-project")
+        yield Label("", id="sl-model")
+        yield Label("", id="sl-urls")
+
+    def on_mount(self) -> None:
+        self.refresh_content()
+
+    def refresh_content(self) -> None:
         d = self.data
         header = f"[{d.status_color}]{d.status_icon}[/] {d.name}"
         state_label = d.state.value.upper()
-        yield Label(f"{header}  [{d.status_color}]{state_label}[/]", markup=True, classes="session-header")
-        yield Label(f"  {d.project_path}", classes="session-project")
+        self.query_one("#sl-header", Label).update(f"{header}  [{d.status_color}]{state_label}[/]")
+        self.query_one("#sl-project", Label).update(f"  {d.project_path}")
+
+        model_text = ""
         if d.model:
-            bar = d.context_bar()
-            model_line = f"  {d.model}"
-            if bar:
-                model_line += f"  {bar}"
-            yield Label(model_line, classes="session-model")
+            model_text = f"  {d.model}"
+        self.query_one("#sl-model", Label).update(model_text)
+
+        url_lines = []
         for url, alive in d.urls:
             icon = "🟢" if alive else "🔴"
-            yield Label(f"  {icon} {url}", classes="session-url")
+            url_lines.append(f"  {icon} {url}")
+        self.query_one("#sl-urls", Label).update("\n".join(url_lines))
 
 
 class SessionListView(ListView):
