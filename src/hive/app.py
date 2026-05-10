@@ -189,7 +189,6 @@ class HiveApp(App):
         item = event.item
         if isinstance(item, SessionListItem):
             self.tmux.select_window(item.data.tmux_window)
-            self.exit()
 
     def _scan_projects(self) -> list[dict]:
         projects: dict[str, dict] = {}
