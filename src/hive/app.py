@@ -141,26 +141,32 @@ class HiveApp(App):
         self._update_tmux_status()
 
     def _rebuild_list(self, list_view: SessionListView) -> None:
+        sorted_sessions = sorted(
+            self.session_data_map.values(),
+            key=lambda s: (s.state != SessionState.WAITING, s.name),
+        )
+
+        new_names = [s.name for s in sorted_sessions]
+        old_names = [
+            item.data.name for item in list_view.children
+            if isinstance(item, SessionListItem)
+        ]
+
+        if new_names == old_names:
+            for item in list_view.children:
+                if isinstance(item, SessionListItem):
+                    updated = self.session_data_map.get(item.data.name)
+                    if updated:
+                        item.data = updated
+            return
+
         target_name = self._last_attached
         if not target_name:
             highlighted_item = list_view.highlighted_child
             if isinstance(highlighted_item, SessionListItem):
                 target_name = highlighted_item.data.name
-        if not target_name and list_view.index is not None:
-            try:
-                children = list(list_view.children)
-                if children and list_view.index < len(children):
-                    item = children[list_view.index]
-                    if isinstance(item, SessionListItem):
-                        target_name = item.data.name
-            except (IndexError, AttributeError):
-                pass
 
         list_view.clear()
-        sorted_sessions = sorted(
-            self.session_data_map.values(),
-            key=lambda s: (s.state != SessionState.WAITING, s.name),
-        )
         restore_index = 0
         for i, data in enumerate(sorted_sessions):
             list_view.append(SessionListItem(data))
