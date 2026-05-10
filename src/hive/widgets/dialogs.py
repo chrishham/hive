@@ -9,11 +9,17 @@ from textual.widgets import Button, Input, Label, ListView, ListItem, RadioButto
 
 
 class ProjectPickerScreen(ModalScreen[dict | None]):
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+        ("up", "cursor_up", "Up"),
+        ("down", "cursor_down", "Down"),
+        ("enter", "select_item", "Select"),
+    ]
 
     def __init__(self, projects: list[dict]) -> None:
         super().__init__()
         self.projects = projects
+        self._project_map: dict[str, dict] = {p["path"]: p for p in projects}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker-dialog"):
@@ -30,10 +36,23 @@ class ProjectPickerScreen(ModalScreen[dict | None]):
     def on_input_changed(self, event: Input.Changed) -> None:
         query = event.value.lower()
         list_view = self.query_one("#picker-list", ListView)
-        for item in list_view.children:
-            if isinstance(item, ListItem):
-                label = item.query_one(Label)
-                item.display = query in label.renderable.plain.lower() if hasattr(label.renderable, "plain") else query in str(label.renderable).lower()
+        for child in list_view.children:
+            if isinstance(child, ListItem) and child.name:
+                proj = self._project_map.get(child.name, {})
+                text = proj.get("name", "").lower()
+                child.display = query in text
+
+    def action_cursor_up(self) -> None:
+        self.query_one("#picker-list", ListView).action_cursor_up()
+
+    def action_cursor_down(self) -> None:
+        self.query_one("#picker-list", ListView).action_cursor_down()
+
+    def action_select_item(self) -> None:
+        list_view = self.query_one("#picker-list", ListView)
+        item = list_view.highlighted_child
+        if isinstance(item, ListItem) and item.name:
+            self.dismiss({"path": item.name, "name": Path(item.name).name})
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         path = event.item.name
