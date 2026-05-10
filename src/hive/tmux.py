@@ -92,6 +92,9 @@ class TmuxClient:
     def rename_window(self, window_index: int, new_name: str) -> None:
         self._run(["tmux", "rename-window", "-t", f"{self.session_name}:{window_index}", new_name])
 
+    def send_keys(self, window_index: int, keys: str) -> None:
+        self._run(["tmux", "send-keys", "-t", f"{self.session_name}:{window_index}", keys, "Enter"])
+
     def kill_session(self) -> None:
         self._run(["tmux", "kill-session", "-t", self.session_name])
 

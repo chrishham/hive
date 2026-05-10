@@ -146,6 +146,15 @@ class HiveApp(App):
             highlighted_item = list_view.highlighted_child
             if isinstance(highlighted_item, SessionListItem):
                 target_name = highlighted_item.data.name
+        if not target_name and list_view.index is not None:
+            try:
+                children = list(list_view.children)
+                if children and list_view.index < len(children):
+                    item = children[list_view.index]
+                    if isinstance(item, SessionListItem):
+                        target_name = item.data.name
+            except (IndexError, AttributeError):
+                pass
 
         list_view.clear()
         sorted_sessions = sorted(
@@ -159,6 +168,7 @@ class HiveApp(App):
                 restore_index = i
         if sorted_sessions:
             list_view.index = restore_index
+            list_view.focus()
 
     def _update_preview(self, list_view: SessionListView, preview: PreviewPane) -> None:
         data = list_view.get_session_data()
@@ -344,5 +354,12 @@ class HiveApp(App):
         self.exit()
 
     async def action_quit_app(self) -> None:
+        windows = self.tmux.list_windows()
+        for win in windows:
+            if win["index"] == 0:
+                continue
+            self.tmux.send_keys(win["index"], "q")
+        import asyncio
+        await asyncio.sleep(2)
         self.tmux.kill_session()
         self.exit()
