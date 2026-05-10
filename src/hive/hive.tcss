@@ -1,0 +1,78 @@
+Screen {
+    layout: vertical;
+}
+
+#header {
+    dock: top;
+    height: 1;
+    background: $primary-background;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#main {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#session-panel {
+    width: 1fr;
+    min-width: 30;
+    border-right: solid $primary;
+}
+
+#preview-panel {
+    width: 1fr;
+    min-width: 30;
+    padding: 0 1;
+}
+
+#footer-bar {
+    dock: bottom;
+    height: 1;
+    background: $primary-background;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+SessionListItem {
+    height: auto;
+    padding: 0 1;
+}
+
+SessionListItem:hover {
+    background: $primary 20%;
+}
+
+.session-header {
+    text-style: bold;
+}
+
+.session-project {
+    color: $text-muted;
+}
+
+.session-model {
+    color: $text-muted;
+}
+
+.session-url {
+    color: $text-muted;
+}
+
+ModalScreen {
+    align: center middle;
+}
+
+#picker-dialog, #options-dialog, #clone-dialog, #exists-dialog, #confirm-dialog, #rename-dialog {
+    width: 70;
+    max-height: 80%;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#picker-filter, #clone-url, #rename-input, #session-name {
+    margin: 1 0;
+}

@@ -1,0 +1,324 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import os
+import subprocess
+import time
+import webbrowser
+from datetime import datetime, timezone
+from pathlib import Path
+
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal
+from textual.widgets import Label
+
+from hive.config import HiveConfig, HiveState
+from hive.detector import SessionState, detect_model, detect_state, detect_urls, probe_url
+from hive.tmux import TmuxClient
+from hive.widgets.dialogs import (
+    CloneScreen,
+    ConfirmKillScreen,
+    FolderExistsScreen,
+    ProjectPickerScreen,
+    RenameScreen,
+    SessionOptionsScreen,
+)
+from hive.widgets.preview import PreviewPane
+from hive.widgets.session_list import SessionData, SessionListItem, SessionListView
+
+
+class HiveApp(App):
+    CSS_PATH = "hive.tcss"
+
+    BINDINGS = [
+        Binding("q", "quit_app", "Quit", show=False),
+        Binding("n", "new_session", "New", show=False),
+        Binding("f", "free_session", "Free", show=False),
+        Binding("g", "clone_session", "Clone", show=False),
+        Binding("k", "kill_session", "Kill", show=False),
+        Binding("r", "resume_session", "Resume", show=False),
+        Binding("R", "rename_session", "Rename", show=False, key_display="R"),
+        Binding("u", "open_url", "URL", show=False),
+        Binding("slash", "search", "Search", show=False),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.config = HiveConfig.load_default()
+        self.state = HiveState.load_default()
+        self.tmux = TmuxClient(self.config.tmux_session_name)
+        self.session_data_map: dict[str, SessionData] = {}
+        self._last_pane_hash: dict[str, str] = {}
+        self._last_change_time: dict[str, float] = {}
+
+    def compose(self) -> ComposeResult:
+        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+        total = len(self.session_data_map)
+        header_text = f"hive — Claude Code Orchestrator    {total} sessions"
+        if waiting:
+            header_text += f" ({waiting}●)"
+        yield Label(header_text, id="header")
+        with Horizontal(id="main"):
+            yield SessionListView(id="session-panel")
+            yield PreviewPane("(no session selected)", id="preview-panel")
+        yield Label(
+            "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  q:quit",
+            id="footer-bar",
+        )
+
+    async def on_mount(self) -> None:
+        self.poll_sessions()
+
+    @work(exclusive=True)
+    async def poll_sessions(self) -> None:
+        while True:
+            await self._refresh_sessions()
+            await asyncio.sleep(self.config.refresh_interval_ms / 1000)
+
+    async def _refresh_sessions(self) -> None:
+        windows = self.tmux.list_windows()
+        list_view = self.query_one("#session-panel", SessionListView)
+        preview = self.query_one("#preview-panel", PreviewPane)
+
+        current_names = set()
+        for win in windows:
+            if win["index"] == 0:
+                continue
+            name = win["name"]
+            current_names.add(name)
+
+            pane_text = self.tmux.capture_pane(win["index"])
+            state = detect_state(pane_text)
+            if not self.tmux.is_pane_alive(win["index"]):
+                state = SessionState.EXITED
+
+            pane_hash = hashlib.md5(pane_text.encode()).hexdigest()
+            now = time.time()
+            if pane_hash != self._last_pane_hash.get(name):
+                self._last_pane_hash[name] = pane_hash
+                self._last_change_time[name] = now
+            if state == SessionState.WAITING:
+                idle_since = self._last_change_time.get(name, now)
+                if now - idle_since > self.config.idle_timeout_seconds:
+                    state = SessionState.IDLE
+
+            model, context_str = detect_model(pane_text)
+
+            scrollback = self.tmux.capture_pane_scrollback(win["index"])
+            raw_urls = detect_urls(scrollback)
+            urls = [(u, probe_url(u)) for u in raw_urls[:5]]
+
+            project_path = self.state.sessions.get(name, {}).get("project_path", "~")
+
+            data = SessionData(
+                name=name,
+                project_path=project_path,
+                tmux_window=win["index"],
+                state=state,
+                model=model,
+                context_str=context_str,
+                urls=urls,
+                preview_text=pane_text,
+            )
+            self.session_data_map[name] = data
+
+        removed = set(self.session_data_map.keys()) - current_names
+        for name in removed:
+            del self.session_data_map[name]
+
+        self._rebuild_list(list_view)
+        self._update_preview(list_view, preview)
+        self._update_header()
+        self._update_tmux_status()
+
+    def _rebuild_list(self, list_view: SessionListView) -> None:
+        highlighted_name = None
+        highlighted_item = list_view.highlighted_child
+        if isinstance(highlighted_item, SessionListItem):
+            highlighted_name = highlighted_item.data.name
+
+        list_view.clear()
+        sorted_sessions = sorted(
+            self.session_data_map.values(),
+            key=lambda s: (s.state != SessionState.WAITING, s.name),
+        )
+        restore_index = 0
+        for i, data in enumerate(sorted_sessions):
+            list_view.append(SessionListItem(data))
+            if data.name == highlighted_name:
+                restore_index = i
+        if sorted_sessions:
+            list_view.index = restore_index
+
+    def _update_preview(self, list_view: SessionListView, preview: PreviewPane) -> None:
+        data = list_view.get_session_data()
+        if data:
+            preview.set_content(data.preview_text, self.config.preview_lines)
+        else:
+            preview.clear_content()
+
+    def _update_header(self) -> None:
+        total = len(self.session_data_map)
+        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+        header_text = f"hive — Claude Code Orchestrator    {total} sessions"
+        if waiting:
+            header_text += f" ({waiting}●)"
+        self.query_one("#header", Label).update(header_text)
+
+    def _update_tmux_status(self) -> None:
+        total = len(self.session_data_map)
+        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+        parts = [f"hive: {total} sessions"]
+        if waiting:
+            parts.append(f"● {waiting} waiting")
+        for s in self.session_data_map.values():
+            if s.state == SessionState.WAITING:
+                parts.append(f"{s.name} ●")
+        self.tmux.set_status_bar(" | ".join(parts))
+
+    def on_list_view_highlighted(self, event: SessionListView.Highlighted) -> None:
+        preview = self.query_one("#preview-panel", PreviewPane)
+        list_view = self.query_one("#session-panel", SessionListView)
+        self._update_preview(list_view, preview)
+
+    def on_list_view_selected(self, event: SessionListView.Selected) -> None:
+        item = event.item
+        if isinstance(item, SessionListItem):
+            self.tmux.select_window(item.data.tmux_window)
+            self.exit()
+
+    def _scan_projects(self) -> list[dict]:
+        projects: dict[str, dict] = {}
+        for scan_path in self.config.scan_paths:
+            expanded = os.path.expanduser(scan_path)
+            if not os.path.isdir(expanded):
+                continue
+            for entry in sorted(os.listdir(expanded)):
+                full = os.path.join(expanded, entry)
+                if os.path.isdir(full) and not entry.startswith("."):
+                    if full not in projects:
+                        last_used = self.state.projects.get(full, {}).get("last_used", "")
+                        projects[full] = {"name": entry, "path": full, "age": self._format_age(last_used)}
+        return list(projects.values())
+
+    def _format_age(self, iso_str: str) -> str:
+        if not iso_str:
+            return ""
+        try:
+            dt = datetime.fromisoformat(iso_str)
+            diff = datetime.now(timezone.utc) - dt
+            if diff.days > 0:
+                return f"{diff.days}d"
+            hours = diff.seconds // 3600
+            if hours > 0:
+                return f"{hours}h"
+            minutes = diff.seconds // 60
+            return f"{minutes}m"
+        except (ValueError, TypeError):
+            return ""
+
+    def _next_session_name(self, project_name: str) -> str:
+        i = 1
+        while f"{project_name}-{i:03d}" in self.session_data_map:
+            i += 1
+        return f"{project_name}-{i:03d}"
+
+    async def _create_session(self, project_path: str, session_name: str, continue_session: bool = False) -> None:
+        cmd = f"claude --name {session_name}"
+        if continue_session:
+            cmd += " --continue"
+        window_idx = self.tmux.new_window(session_name, project_path, cmd)
+        self.state.add_session(session_name, project_path, window_idx, "")
+        self.state.save_default()
+
+    async def action_new_session(self) -> None:
+        projects = self._scan_projects()
+        result = await self.push_screen_wait(ProjectPickerScreen(projects))
+        if result is None:
+            return
+        project_path = result["path"]
+        project_name = result["name"]
+        options = await self.push_screen_wait(
+            SessionOptionsScreen(project_name, has_previous=project_path in [s.get("project_path") for s in self.state.sessions.values()])
+        )
+        if options is None:
+            return
+        name = options["name"] or self._next_session_name(project_name)
+        await self._create_session(project_path, name, options["continue_session"])
+
+    async def action_free_session(self) -> None:
+        options = await self.push_screen_wait(SessionOptionsScreen("home (~)", has_previous=False))
+        if options is None:
+            return
+        name = options["name"] or self._next_session_name("free")
+        await self._create_session(str(Path.home()), name)
+
+    async def action_clone_session(self) -> None:
+        result = await self.push_screen_wait(CloneScreen(self.config.clone_path))
+        if result is None:
+            return
+        url = result["url"]
+        clone_path = result["clone_path"]
+        repo_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
+        target = os.path.join(clone_path, repo_name)
+
+        if os.path.exists(target):
+            choice = await self.push_screen_wait(FolderExistsScreen(target))
+            if choice is None:
+                return
+            if choice == "pull":
+                subprocess.run(["git", "-C", target, "pull"], capture_output=True)
+        else:
+            subprocess.run(["git", "clone", url, target], capture_output=True)
+
+        name = self._next_session_name(repo_name)
+        await self._create_session(target, name)
+
+    async def action_kill_session(self) -> None:
+        list_view = self.query_one("#session-panel", SessionListView)
+        data = list_view.get_session_data()
+        if data is None:
+            return
+        confirmed = await self.push_screen_wait(ConfirmKillScreen(data.name))
+        if confirmed:
+            self.tmux.kill_window(data.tmux_window)
+            self.state.remove_session(data.name)
+            self.state.save_default()
+
+    async def action_resume_session(self) -> None:
+        list_view = self.query_one("#session-panel", SessionListView)
+        data = list_view.get_session_data()
+        if data is None:
+            return
+        self.tmux.kill_window(data.tmux_window)
+        await self._create_session(data.project_path, data.name, continue_session=True)
+
+    async def action_rename_session(self) -> None:
+        list_view = self.query_one("#session-panel", SessionListView)
+        data = list_view.get_session_data()
+        if data is None:
+            return
+        new_name = await self.push_screen_wait(RenameScreen(data.name))
+        if new_name and new_name != data.name:
+            self.tmux.rename_window(data.tmux_window, new_name)
+            if data.name in self.state.sessions:
+                self.state.sessions[new_name] = self.state.sessions.pop(data.name)
+            self.state.save_default()
+
+    async def action_open_url(self) -> None:
+        list_view = self.query_one("#session-panel", SessionListView)
+        data = list_view.get_session_data()
+        if data is None or not data.urls:
+            return
+        first_live = next((u for u, alive in data.urls if alive), None)
+        if first_live:
+            webbrowser.open(f"http://{first_live}")
+
+    async def action_search(self) -> None:
+        pass
+
+    async def action_quit_app(self) -> None:
+        self.exit()
