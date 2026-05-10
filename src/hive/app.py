@@ -151,9 +151,18 @@ class HiveApp(App):
             del self.session_data_map[name]
 
         self._rebuild_list(list_view)
+        self._ensure_highlight(list_view)
         self._update_preview(list_view, preview)
         self._update_header()
         self._update_tmux_status()
+
+    def _ensure_highlight(self, list_view: SessionListView) -> None:
+        children = list(list_view.children)
+        if not children:
+            return
+        if list_view.index is None or list_view.index < 0 or list_view.index >= len(children):
+            list_view.index = 0
+        list_view.focus()
 
     def _rebuild_list(self, list_view: SessionListView) -> None:
         sorted_sessions = sorted(
