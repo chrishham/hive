@@ -68,3 +68,45 @@ def derive_state(jsonl_path: Path, now: datetime) -> SessionState:
             return SessionState.WAITING
         return SessionState.WORKING
     return SessionState.WORKING  # type == "user"
+
+
+CONTEXT_WINDOWS = {
+    "claude-opus-4-7": 200_000,
+    "claude-opus-4-6": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-haiku-4-5": 200_000,
+}
+
+
+def derive_context_pct(jsonl_path: Path, model: str | None) -> int | None:
+    """Walk JSONL; find latest assistant message with `usage`; compute pct."""
+    if model is None or model not in CONTEXT_WINDOWS:
+        return None
+    last_usage = None
+    try:
+        with jsonl_path.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if ev.get("type") != "assistant":
+                    continue
+                usage = (ev.get("message") or {}).get("usage")
+                if usage:
+                    last_usage = usage
+    except OSError:
+        return None
+    if not last_usage:
+        return None
+    total = (
+        last_usage.get("input_tokens", 0)
+        + last_usage.get("cache_creation_input_tokens", 0)
+        + last_usage.get("cache_read_input_tokens", 0)
+        + last_usage.get("output_tokens", 0)
+    )
+    window = CONTEXT_WINDOWS[model]
+    return min(round(total / window * 100), 100)

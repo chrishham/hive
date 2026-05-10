@@ -116,3 +116,56 @@ def test_state_working_when_no_stop_reason(tmp_path):
     p = tmp_path / "x.jsonl"
     write_jsonl(p, [evt("assistant", message={"content": [{"type": "text"}]})])
     assert derive_state(p, NOW) == SessionState.WORKING
+
+
+# --- derive_context_pct ---
+
+def test_context_pct_none_when_no_usage(tmp_path):
+    p = tmp_path / "x.jsonl"
+    write_jsonl(p, [evt("assistant", message={"stop_reason": "end_turn"})])
+    from hive.derive import derive_context_pct
+    assert derive_context_pct(p, "claude-opus-4-7") is None
+
+
+def test_context_pct_computed_from_usage(tmp_path):
+    p = tmp_path / "x.jsonl"
+    write_jsonl(p, [
+        evt("assistant", message={
+            "stop_reason": "end_turn",
+            "model": "claude-opus-4-7",
+            "usage": {
+                "input_tokens": 1000,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 9000,
+                "output_tokens": 500,
+            },
+        }),
+    ])
+    from hive.derive import derive_context_pct
+    # total = 10500; window for opus = 200_000; round(10500/200000*100) = 5
+    assert derive_context_pct(p, "claude-opus-4-7") == 5
+
+
+def test_context_pct_caps_at_100(tmp_path):
+    p = tmp_path / "x.jsonl"
+    write_jsonl(p, [
+        evt("assistant", message={
+            "stop_reason": "end_turn",
+            "model": "claude-opus-4-7",
+            "usage": {"input_tokens": 999_999, "output_tokens": 999_999},
+        }),
+    ])
+    from hive.derive import derive_context_pct
+    assert derive_context_pct(p, "claude-opus-4-7") == 100
+
+
+def test_context_pct_unknown_model(tmp_path):
+    p = tmp_path / "x.jsonl"
+    write_jsonl(p, [
+        evt("assistant", message={
+            "model": "unknown-model",
+            "usage": {"input_tokens": 1000, "output_tokens": 500},
+        }),
+    ])
+    from hive.derive import derive_context_pct
+    assert derive_context_pct(p, "unknown-model") is None
