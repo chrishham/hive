@@ -71,18 +71,24 @@ class PtyBridge:
             await websocket.send_bytes(chunk)
 
         async def pty_to_socket():
-            while True:
-                data = await viewer_q.get()
-                await websocket.send_bytes(data)
+            try:
+                while True:
+                    data = await viewer_q.get()
+                    await websocket.send_bytes(data)
+            except Exception:
+                return  # client disconnected or socket closed
 
         async def socket_to_pty():
-            while True:
-                data = await websocket.receive_bytes()
-                if state.fd is not None:
-                    try:
-                        os.write(state.fd, data)
-                    except OSError:
-                        return
+            try:
+                while True:
+                    data = await websocket.receive_bytes()
+                    if state.fd is not None:
+                        try:
+                            os.write(state.fd, data)
+                        except OSError:
+                            return
+            except Exception:
+                return  # client disconnected or socket closed
 
         out_task = asyncio.create_task(pty_to_socket())
         in_task = asyncio.create_task(socket_to_pty())
@@ -93,5 +99,10 @@ class PtyBridge:
             )
             for t in pending:
                 t.cancel()
+            # Consume exceptions on completed tasks so asyncio doesn't log
+            # "Task exception was never retrieved" on clean disconnects.
+            for t in done:
+                if not t.cancelled():
+                    t.exception()
         finally:
             state.viewers.discard(viewer_q)
