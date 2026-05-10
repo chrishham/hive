@@ -11,8 +11,6 @@ from pathlib import Path
 class SessionState(Enum):
     WAITING = "waiting"
     WORKING = "working"
-    IDLE = "idle"
-    EXITED = "exited"
 
 
 PROMPT_PATTERNS = [
@@ -37,7 +35,7 @@ URL_PATTERN = re.compile(r"(?:https?://)?(?:localhost|127\.0\.0\.1):(\d{2,5})")
 
 def detect_state(pane_text: str) -> SessionState:
     if not pane_text.strip():
-        return SessionState.EXITED
+        return SessionState.WORKING
 
     last_chunk = pane_text[-500:]
 

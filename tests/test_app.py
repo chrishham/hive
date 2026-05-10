@@ -24,14 +24,10 @@ class TestSessionData:
     def test_status_icon(self):
         assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.WAITING).status_icon == "●"
         assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.WORKING).status_icon == "◐"
-        assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.IDLE).status_icon == "○"
-        assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.EXITED).status_icon == "✕"
 
     def test_status_color(self):
         assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.WAITING).status_color == "yellow"
         assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.WORKING).status_color == "dodgerblue"
-        assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.IDLE).status_color == "grey"
-        assert SessionData(name="a", project_path="/", tmux_window=1, state=SessionState.EXITED).status_color == "red"
 
 
 class TestHiveAppSmoke:

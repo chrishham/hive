@@ -18,9 +18,9 @@ class TestDetectState:
         pane = "some output\n  Running: pytest tests/ -v\n"
         assert detect_state(pane) == SessionState.WORKING
 
-    def test_exited_empty(self):
+    def test_empty_pane(self):
         pane = ""
-        assert detect_state(pane) == SessionState.EXITED
+        assert detect_state(pane) == SessionState.WORKING
 
     def test_default_unknown(self):
         pane = "some random output\nno known pattern\n"

@@ -13,15 +13,11 @@ from hive.detector import SessionState
 STATUS_ICONS = {
     SessionState.WAITING: "●",
     SessionState.WORKING: "◐",
-    SessionState.IDLE: "○",
-    SessionState.EXITED: "✕",
 }
 
 STATUS_COLORS = {
     SessionState.WAITING: "yellow",
     SessionState.WORKING: "dodgerblue",
-    SessionState.IDLE: "grey",
-    SessionState.EXITED: "red",
 }
 
 

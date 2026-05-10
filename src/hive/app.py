@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import os
 import subprocess
-import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,8 +51,6 @@ class HiveApp(App):
         self.state = HiveState.load_default()
         self.tmux = TmuxClient(self.config.tmux_session_name)
         self.session_data_map: dict[str, SessionData] = {}
-        self._last_pane_hash: dict[str, str] = {}
-        self._last_change_time: dict[str, float] = {}
         self._last_attached: str | None = None
 
     def compose(self) -> ComposeResult:
@@ -65,7 +61,7 @@ class HiveApp(App):
             header_text += f" ({waiting}●)"
         yield Label(header_text, id="header")
         with Horizontal(id="main"):
-            yield SessionListView(id="session-panel")
+            yield SessionListView(id="session-panel", initial_index=0)
             yield PreviewPane("(no session selected)", id="preview-panel")
         yield Label(
             "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  d:detach  Q:quit all",
@@ -96,18 +92,6 @@ class HiveApp(App):
 
             pane_text = self.tmux.capture_pane(win["index"])
             state = detect_state(pane_text)
-            if state == SessionState.EXITED:
-                state = SessionState.WORKING
-
-            pane_hash = hashlib.md5(pane_text.encode()).hexdigest()
-            now = time.time()
-            if pane_hash != self._last_pane_hash.get(name):
-                self._last_pane_hash[name] = pane_hash
-                self._last_change_time[name] = now
-            if state == SessionState.WAITING:
-                idle_since = self._last_change_time.get(name, now)
-                if now - idle_since > self.config.idle_timeout_seconds:
-                    state = SessionState.IDLE
 
             model, context_str = detect_model(pane_text)
 

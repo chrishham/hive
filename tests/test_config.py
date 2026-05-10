@@ -12,16 +12,15 @@ class TestHiveConfig:
         config = HiveConfig.defaults()
         assert config.scan_paths == [str(Path.home() / "Projects")]
         assert config.clone_path == str(Path.home() / "Projects")
-        assert config.refresh_interval_ms == 2500
+        assert config.refresh_interval_ms == 5000
         assert config.preview_lines == 20
-        assert config.idle_timeout_seconds == 300
         assert config.tmux_session_name == "hive"
 
     def test_load_from_toml(self, tmp_path):
         config_file = tmp_path / "config.toml"
         config_file.write_text(
             '[projects]\nscan_paths = ["/tmp/a"]\nclone_path = "/tmp/b"\n\n'
-            "[display]\nrefresh_interval_ms = 1000\npreview_lines = 30\nidle_timeout_seconds = 600\n\n"
+            "[display]\nrefresh_interval_ms = 1000\npreview_lines = 30\n\n"
             '[tmux]\nsession_name = "myhive"\n'
         )
         config = HiveConfig.load(config_file)
@@ -29,7 +28,6 @@ class TestHiveConfig:
         assert config.clone_path == "/tmp/b"
         assert config.refresh_interval_ms == 1000
         assert config.preview_lines == 30
-        assert config.idle_timeout_seconds == 600
         assert config.tmux_session_name == "myhive"
 
     def test_load_missing_file_returns_defaults(self, tmp_path):

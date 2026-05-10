@@ -21,9 +21,8 @@ CONFIG_DIR = Path.home() / ".config" / "hive"
 class HiveConfig:
     scan_paths: list[str] = field(default_factory=lambda: list(DEFAULT_SCAN_PATHS))
     clone_path: str = DEFAULT_CLONE_PATH
-    refresh_interval_ms: int = 2500
+    refresh_interval_ms: int = 5000
     preview_lines: int = 20
-    idle_timeout_seconds: int = 300
     tmux_session_name: str = "hive"
 
     @classmethod
@@ -44,7 +43,6 @@ class HiveConfig:
             clone_path=projects.get("clone_path", DEFAULT_CLONE_PATH),
             refresh_interval_ms=display.get("refresh_interval_ms", 2500),
             preview_lines=display.get("preview_lines", 20),
-            idle_timeout_seconds=display.get("idle_timeout_seconds", 300),
             tmux_session_name=tmux.get("session_name", "hive"),
         )
 
