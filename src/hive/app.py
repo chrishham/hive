@@ -16,7 +16,7 @@ from textual.containers import Horizontal
 from textual.widgets import Label
 
 from hive.config import HiveConfig, HiveState
-from hive.detector import SessionState, detect_context_usage, detect_model, detect_state, detect_urls, probe_url
+from hive.detector import SessionState, detect_model, detect_state, detect_urls, probe_url
 from hive.tmux import TmuxClient
 from hive.widgets.dialogs import (
     CloneScreen,
@@ -114,7 +114,6 @@ class HiveApp(App):
             urls = [(u, probe_url(u)) for u in raw_urls[:5]]
 
             project_path = self.state.sessions.get(name, {}).get("project_path", "~")
-            context_pct = detect_context_usage(project_path, model, context_str)
 
             data = SessionData(
                 name=name,
@@ -123,7 +122,6 @@ class HiveApp(App):
                 state=state,
                 model=model,
                 context_str=context_str,
-                context_pct=context_pct,
                 urls=urls,
                 preview_text=pane_text,
             )

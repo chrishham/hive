@@ -12,8 +12,8 @@ if sys.version_info >= (3, 12):
 else:
     import tomli as tomllib
 
-DEFAULT_SCAN_PATHS = ["/mnt/data/projects", str(Path.home() / "Projects")]
-DEFAULT_CLONE_PATH = "/mnt/data/projects"
+DEFAULT_SCAN_PATHS = [str(Path.home() / "Projects")]
+DEFAULT_CLONE_PATH = str(Path.home() / "Projects")
 CONFIG_DIR = Path.home() / ".config" / "hive"
 
 

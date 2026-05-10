@@ -10,8 +10,8 @@ from hive.config import HiveConfig, HiveState
 class TestHiveConfig:
     def test_default_config(self):
         config = HiveConfig.defaults()
-        assert config.scan_paths == ["/mnt/data/projects", str(Path.home() / "Projects")]
-        assert config.clone_path == "/mnt/data/projects"
+        assert config.scan_paths == [str(Path.home() / "Projects")]
+        assert config.clone_path == str(Path.home() / "Projects")
         assert config.refresh_interval_ms == 2500
         assert config.preview_lines == 20
         assert config.idle_timeout_seconds == 300
