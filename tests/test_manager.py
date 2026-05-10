@@ -81,3 +81,103 @@ def test_spawn_invokes_command_with_correct_args(manager, tmp_path, monkeypatch)
         assert list(target_dir.glob("*.jsonl"))
     finally:
         manager.kill(s.id)
+
+
+def test_kill_terminates_process(manager, tmp_path):
+    project = tmp_path / "k1"
+    project.mkdir()
+    s = manager.spawn(project_path=project, name="k1-001")
+    pid = s.pid
+    manager.kill(s.id)
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_kill_unknown_id_is_noop(manager):
+    manager.kill("does-not-exist")  # should not raise
+
+
+def test_list_returns_active_sessions(manager, tmp_path):
+    p1 = tmp_path / "l1"; p1.mkdir()
+    p2 = tmp_path / "l2"; p2.mkdir()
+    s1 = manager.spawn(project_path=p1, name="l1-001")
+    s2 = manager.spawn(project_path=p2, name="l2-001")
+    try:
+        names = {s.name for s in manager.list()}
+        assert names == {"l1-001", "l2-001"}
+    finally:
+        manager.kill(s1.id)
+        manager.kill(s2.id)
+
+
+def test_spawn_rejects_duplicate_name(manager, tmp_path):
+    p = tmp_path / "d1"; p.mkdir()
+    s = manager.spawn(project_path=p, name="dup-001")
+    try:
+        with pytest.raises(ValueError, match="already exists"):
+            manager.spawn(project_path=p, name="dup-001")
+    finally:
+        manager.kill(s.id)
+
+
+def test_restart_persisted_resumes_from_state_json(
+    fake_claude_cmd, claude_projects_dir, state_path, tmp_path
+):
+    # Pre-populate state.json
+    project = tmp_path / "r1"; project.mkdir()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    import json as _json
+    state_path.write_text(_json.dumps({"sessions": [{
+        "id": "id-1",
+        "name": "r1-001",
+        "project_path": str(project),
+        "claude_session_id": "resume-uuid-xyz",
+    }]}))
+    mgr = SessionManager(
+        claude_command=fake_claude_cmd,
+        claude_projects_dir=claude_projects_dir,
+        state_path=state_path,
+    )
+    mgr.restart_persisted()
+    try:
+        sessions = mgr.list()
+        assert len(sessions) == 1
+        assert sessions[0].name == "r1-001"
+        # fake_claude should have written to <encoded>/resume-uuid-xyz.jsonl
+        encoded = str(project).replace("/", "-")
+        deadline = time.time() + 5
+        target = claude_projects_dir / encoded / "resume-uuid-xyz.jsonl"
+        while time.time() < deadline and not target.exists():
+            time.sleep(0.05)
+        assert target.exists()
+    finally:
+        for s in mgr.list():
+            mgr.kill(s.id)
+
+
+def test_save_state_persists_active_sessions(
+    fake_claude_cmd, claude_projects_dir, state_path, tmp_path
+):
+    mgr = SessionManager(
+        claude_command=fake_claude_cmd,
+        claude_projects_dir=claude_projects_dir,
+        state_path=state_path,
+    )
+    project = tmp_path / "s1"; project.mkdir()
+    s = mgr.spawn(project_path=project, name="s1-001")
+    s.claude_session_id = "manually-set-uuid"
+    try:
+        mgr.save_state()
+        import json as _json
+        data = _json.loads(state_path.read_text())
+        assert data["sessions"][0]["name"] == "s1-001"
+        assert data["sessions"][0]["claude_session_id"] == "manually-set-uuid"
+    finally:
+        mgr.kill(s.id)
