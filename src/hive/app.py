@@ -92,6 +92,7 @@ class HiveApp(App):
                 cmd += " --continue"
             window_idx = self.tmux.new_window(name, project_path, cmd)
             self.state.sessions[name]["tmux_window"] = window_idx
+        self.tmux.select_window(0)
         self.state.save_default()
 
     @work(exclusive=True)
