@@ -14,8 +14,13 @@ class TmuxClient:
         result = self._run(["tmux", "has-session", "-t", self.session_name])
         return result.returncode == 0
 
-    def create_session(self) -> None:
-        self._run(["tmux", "new-session", "-d", "-s", self.session_name, "-x", "200", "-y", "50"])
+    def create_session(self, window_name: str | None = None, command: str | None = None) -> None:
+        args = ["tmux", "new-session", "-d", "-s", self.session_name, "-x", "200", "-y", "50"]
+        if window_name:
+            args.extend(["-n", window_name])
+        if command:
+            args.append(command)
+        self._run(args)
 
     def list_windows(self) -> list[dict]:
         result = self._run(

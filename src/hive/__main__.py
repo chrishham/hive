@@ -49,15 +49,13 @@ def main() -> None:
         print("Usage: hive [attach|list|new <path>]")
         sys.exit(1)
 
-    _ensure_session(tmux, config)
-
     if os.environ.get("TMUX"):
         from hive.app import HiveApp
         app = HiveApp()
         app.run()
     else:
-        tmux.new_window("dashboard", os.getcwd(), "uv run python -m hive")
-        tmux.select_window(0)
+        if not tmux.session_exists():
+            tmux.create_session(window_name="dashboard", command="uv run python -m hive")
         tmux.attach()
 
 
