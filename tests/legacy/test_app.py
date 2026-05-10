@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from hive.widgets.session_list import SessionListItem, SessionData
-from hive.detector import SessionState
-from hive.config import HiveConfig, HiveState
+from hive_legacy.widgets.session_list import SessionListItem, SessionData
+from hive_legacy.detector import SessionState
+from hive_legacy.config import HiveConfig, HiveState
 
 
 class TestSessionData:
@@ -32,9 +32,9 @@ class TestSessionData:
 
 class TestHiveAppSmoke:
     @pytest.mark.asyncio
-    @patch("hive.app.TmuxClient")
-    @patch("hive.app.HiveConfig.load_default")
-    @patch("hive.app.HiveState.load_default")
+    @patch("hive_legacy.app.TmuxClient")
+    @patch("hive_legacy.app.HiveConfig.load_default")
+    @patch("hive_legacy.app.HiveState.load_default")
     async def test_app_mounts(self, mock_state, mock_config, mock_tmux):
         mock_config.return_value = HiveConfig.defaults()
         mock_state.return_value = HiveState()
@@ -42,7 +42,7 @@ class TestHiveAppSmoke:
         mock_tmux_instance.list_windows.return_value = []
         mock_tmux.return_value = mock_tmux_instance
 
-        from hive.app import HiveApp
+        from hive_legacy.app import HiveApp
         app = HiveApp()
         async with app.run_test() as pilot:
             from textual.widgets import Label

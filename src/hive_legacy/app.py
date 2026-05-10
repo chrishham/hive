@@ -13,10 +13,10 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Label
 
-from hive.config import HiveConfig, HiveState
-from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
-from hive.tmux import TmuxClient
-from hive.widgets.dialogs import (
+from hive_legacy.config import HiveConfig, HiveState
+from hive_legacy.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
+from hive_legacy.tmux import TmuxClient
+from hive_legacy.widgets.dialogs import (
     CloneScreen,
     ConfirmKillScreen,
     FolderExistsScreen,
@@ -24,8 +24,8 @@ from hive.widgets.dialogs import (
     RenameScreen,
     SessionOptionsScreen,
 )
-from hive.widgets.preview import PreviewPane
-from hive.widgets.session_list import SessionData, SessionListItem, SessionListView
+from hive_legacy.widgets.preview import PreviewPane
+from hive_legacy.widgets.session_list import SessionData, SessionListItem, SessionListView
 
 
 class HiveApp(App):
@@ -374,7 +374,7 @@ class HiveApp(App):
         if len(data.urls) == 1:
             webbrowser.open(f"http://{data.urls[0][0]}")
         else:
-            from hive.widgets.dialogs import UrlPickerScreen
+            from hive_legacy.widgets.dialogs import UrlPickerScreen
             chosen = await self.push_screen_wait(UrlPickerScreen(data.urls))
             if chosen:
                 webbrowser.open(f"http://{chosen}")

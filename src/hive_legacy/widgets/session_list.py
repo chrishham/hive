@@ -8,7 +8,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView
 
-from hive.detector import SessionState
+from hive_legacy.detector import SessionState
 
 STATUS_ICONS = {
     SessionState.WAITING: "●",

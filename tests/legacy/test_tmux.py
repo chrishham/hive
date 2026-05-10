@@ -1,7 +1,7 @@
 from unittest.mock import patch, MagicMock
 import subprocess
 
-from hive.tmux import TmuxClient
+from hive_legacy.tmux import TmuxClient
 
 
 class TestTmuxClient:

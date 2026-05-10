@@ -1,4 +1,4 @@
-from hive.detector import SessionState, detect_state, detect_model, detect_urls, probe_url
+from hive_legacy.detector import SessionState, detect_state, detect_model, detect_urls, probe_url
 
 
 class TestDetectState:

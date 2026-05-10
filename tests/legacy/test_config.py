@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hive.config import HiveConfig, HiveState
+from hive_legacy.config import HiveConfig, HiveState
 
 
 class TestHiveConfig:

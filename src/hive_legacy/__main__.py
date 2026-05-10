@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import sys
 
-from hive.config import HiveConfig
-from hive.tmux import TmuxClient
+from hive_legacy.config import HiveConfig
+from hive_legacy.tmux import TmuxClient
 
 
 def main() -> None:
@@ -50,7 +50,7 @@ def main() -> None:
         sys.exit(1)
 
     if os.environ.get("TMUX"):
-        from hive.app import HiveApp
+        from hive_legacy.app import HiveApp
         app = HiveApp()
         app.run()
     else:
