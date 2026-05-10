@@ -1,11 +1,55 @@
 from __future__ import annotations
 
+import json
+import os
+from datetime import datetime
 from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, ListView, ListItem, RadioButton, RadioSet
+
+CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+
+def scan_resumable_sessions(project_path: str) -> list[dict]:
+    encoded = project_path.replace("/", "-")
+    proj_dir = CLAUDE_PROJECTS_DIR / encoded
+    if not proj_dir.is_dir():
+        return []
+    sessions = []
+    for f in sorted(proj_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
+        sid = f.stem
+        mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        first_msg = _extract_first_message(f)
+        sessions.append({"id": sid, "date": mtime, "summary": first_msg})
+    return sessions[:10]
+
+
+def _extract_first_message(path: Path) -> str:
+    try:
+        with open(path) as fp:
+            for line in fp:
+                try:
+                    d = json.loads(line)
+                    if d.get("type") != "user":
+                        continue
+                    msg = d.get("message", {})
+                    if not isinstance(msg, dict):
+                        continue
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        for c in content:
+                            if isinstance(c, dict) and c.get("type") == "text":
+                                return c["text"][:60].replace("\n", " ")
+                    elif isinstance(content, str):
+                        return content[:60].replace("\n", " ")
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return "(no messages)"
 
 
 class ProjectPickerScreen(ModalScreen[dict | None]):
@@ -67,33 +111,58 @@ class ProjectPickerScreen(ModalScreen[dict | None]):
 class SessionOptionsScreen(ModalScreen[dict | None]):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
-    def __init__(self, project_name: str, has_previous: bool = False) -> None:
+    def __init__(self, project_name: str, project_path: str) -> None:
         super().__init__()
         self.project_name = project_name
-        self.has_previous = has_previous
+        self.project_path = project_path
+        self.resumable = scan_resumable_sessions(project_path)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="options-dialog"):
-            yield Label(f"New session in {self.project_name}", id="options-title")
-            with RadioSet(id="session-type"):
-                yield RadioButton("New session", value=True)
-                if self.has_previous:
-                    yield RadioButton("Continue last session")
+            yield Label(f"Session in {self.project_name}", id="options-title")
+            items = [ListItem(Label("  New session"), name="__new__")]
+            for s in self.resumable:
+                items.append(ListItem(
+                    Label(f"  {s['date']}  {s['summary']}"),
+                    name=s["id"],
+                ))
+            yield ListView(*items, id="session-picker", initial_index=0)
             yield Input(placeholder="Session name (blank for auto)", id="session-name")
             with Horizontal(id="options-buttons"):
                 yield Button("Create", variant="primary", id="btn-create")
                 yield Button("Cancel", id="btn-cancel")
 
+    def on_key(self, event) -> None:
+        lv = self.query_one("#session-picker", ListView)
+        if event.key == "up":
+            lv.action_cursor_up()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "down":
+            lv.action_cursor_down()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "enter":
+            self._submit()
+            event.prevent_default()
+            event.stop()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-create":
-            name_input = self.query_one("#session-name", Input)
-            radio = self.query_one("#session-type", RadioSet)
-            self.dismiss({
-                "name": name_input.value,
-                "continue_session": radio.pressed_index == 1 if self.has_previous else False,
-            })
+            self._submit()
         else:
             self.dismiss(None)
+
+    def _submit(self) -> None:
+        lv = self.query_one("#session-picker", ListView)
+        name_input = self.query_one("#session-name", Input)
+        item = lv.highlighted_child
+        if isinstance(item, ListItem):
+            session_id = item.name
+            self.dismiss({
+                "name": name_input.value,
+                "resume_session_id": None if session_id == "__new__" else session_id,
+            })
 
     def action_cancel(self) -> None:
         self.dismiss(None)

@@ -84,7 +84,12 @@ class HiveApp(App):
             if not os.path.isdir(project_path):
                 self.state.remove_session(name)
                 continue
-            cmd = f"claude --name {name} --continue"
+            session_id = info.get("claude_session_id", "")
+            cmd = f"claude --name {name}"
+            if session_id:
+                cmd += f" --resume {session_id}"
+            else:
+                cmd += " --continue"
             window_idx = self.tmux.new_window(name, project_path, cmd)
             self.state.sessions[name]["tmux_window"] = window_idx
         self.state.save_default()
@@ -251,12 +256,12 @@ class HiveApp(App):
             i += 1
         return f"{project_name}-{i:03d}"
 
-    async def _create_session(self, project_path: str, session_name: str, continue_session: bool = False) -> None:
+    async def _create_session(self, project_path: str, session_name: str, resume_id: str | None = None) -> None:
         cmd = f"claude --name {session_name}"
-        if continue_session:
-            cmd += " --continue"
+        if resume_id:
+            cmd += f" --resume {resume_id}"
         window_idx = self.tmux.new_window(session_name, project_path, cmd)
-        self.state.add_session(session_name, project_path, window_idx, "")
+        self.state.add_session(session_name, project_path, window_idx, resume_id or "")
         self.state.save_default()
 
     @work
@@ -268,20 +273,21 @@ class HiveApp(App):
         project_path = result["path"]
         project_name = result["name"]
         options = await self.push_screen_wait(
-            SessionOptionsScreen(project_name, has_previous=project_path in [s.get("project_path") for s in self.state.sessions.values()])
+            SessionOptionsScreen(project_name, project_path)
         )
         if options is None:
             return
         name = options["name"] or self._next_session_name(project_name)
-        await self._create_session(project_path, name, options["continue_session"])
+        await self._create_session(project_path, name, options.get("resume_session_id"))
 
     @work
     async def action_free_session(self) -> None:
-        options = await self.push_screen_wait(SessionOptionsScreen("home (~)", has_previous=False))
+        home = str(Path.home())
+        options = await self.push_screen_wait(SessionOptionsScreen("home (~)", home))
         if options is None:
             return
         name = options["name"] or self._next_session_name("free")
-        await self._create_session(str(Path.home()), name)
+        await self._create_session(home, name, options.get("resume_session_id"))
 
     @work
     async def action_clone_session(self) -> None:
@@ -323,7 +329,8 @@ class HiveApp(App):
         if data is None:
             return
         self.tmux.kill_window(data.tmux_window)
-        await self._create_session(data.project_path, data.name, continue_session=True)
+        session_id = self.state.sessions.get(data.name, {}).get("claude_session_id", "")
+        await self._create_session(data.project_path, data.name, resume_id=session_id or None)
 
     @work
     async def action_rename_session(self) -> None:
