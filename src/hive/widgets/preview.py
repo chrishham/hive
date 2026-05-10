@@ -5,20 +5,21 @@ import re
 from textual.widgets import Static
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[a-zA-Z]")
-BLOCK_CHARS = re.compile(r"[▐▛▜▌▝▘█▀▄▌▐░▒▓]+")
-SEPARATOR = re.compile(r"^[─━═╌╍┄┅]{5,}.*$")
+BOX_AND_BLOCK = re.compile(r"[▐▛▜▌▝▘█▀▄░▒▓│║╭╮╰╯┌┐└┘├┤┬┴┼╔╗╚╝╠╣╦╩╬]+")
+SEPARATOR = re.compile(r"^─{3,}")
 
 
 def clean_preview(text: str) -> str:
     text = ANSI_ESCAPE.sub("", text)
     lines = []
     for line in text.split("\n"):
-        if SEPARATOR.match(line.strip()):
-            continue
-        line = BLOCK_CHARS.sub("", line)
+        line = BOX_AND_BLOCK.sub("", line)
         stripped = line.strip()
-        if stripped:
-            lines.append(stripped)
+        if not stripped:
+            continue
+        if SEPARATOR.match(stripped):
+            continue
+        lines.append(stripped)
     return "\n".join(lines)
 
 
