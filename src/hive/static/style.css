@@ -1,0 +1,96 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1a1a1a; color: #e0e0e0;
+}
+body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+
+#sidebar {
+  background: #232323;
+  border-right: 1px solid #333;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#sidebar header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #333;
+}
+#sidebar header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+#new-session-btn {
+  background: #3a82f7; color: white; border: none;
+  border-radius: 4px; width: 28px; height: 28px;
+  font-size: 18px; cursor: pointer;
+}
+
+#session-list {
+  list-style: none; margin: 0; padding: 4px 0;
+  flex: 1; overflow-y: auto;
+}
+#session-list li {
+  display: grid;
+  grid-template-columns: 24px 1fr 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+#session-list li:hover { background: #2c2c2c; }
+#session-list li.active {
+  background: #2e3a4a;
+  border-left-color: #3a82f7;
+}
+#session-list li .icon { text-align: center; font-size: 14px; }
+#session-list li.state-working .icon { color: #3a82f7; }
+#session-list li.state-waiting .icon { color: #c4a000; }
+#session-list li.state-bootstrapping .icon { color: #888; }
+#session-list li.state-dead .icon { color: #d04040; }
+#session-list li .name { font-size: 13px; }
+#session-list li .kill {
+  background: none; border: none; color: #888; cursor: pointer;
+  padding: 0; font-size: 14px; visibility: hidden;
+}
+#session-list li:hover .kill { visibility: visible; }
+#session-list li .kill:hover { color: #ff6060; }
+
+#terminal-pane {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: #666; font-size: 14px;
+}
+#terminal-host { height: 100%; }
+
+dialog {
+  background: #232323; color: #e0e0e0;
+  border: 1px solid #444; border-radius: 6px;
+  padding: 18px 22px;
+}
+dialog h2 { margin: 0 0 12px; font-size: 16px; }
+dialog label { display: block; margin: 8px 0; font-size: 13px; }
+dialog input {
+  display: block; width: 320px;
+  margin-top: 4px; padding: 6px 8px;
+  background: #1a1a1a; color: #e0e0e0;
+  border: 1px solid #444; border-radius: 4px;
+}
+dialog menu {
+  display: flex; gap: 8px; justify-content: flex-end;
+  margin: 12px 0 0; padding: 0;
+}
+dialog button {
+  padding: 6px 14px;
+  background: #333; color: #e0e0e0;
+  border: 1px solid #444; border-radius: 4px;
+  cursor: pointer;
+}
+dialog button#new-session-submit { background: #3a82f7; border-color: #3a82f7; }
