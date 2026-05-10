@@ -96,6 +96,8 @@ class HiveApp(App):
 
             pane_text = self.tmux.capture_pane(win["index"])
             state = detect_state(pane_text)
+            if state == SessionState.EXITED:
+                state = SessionState.WORKING
 
             pane_hash = hashlib.md5(pane_text.encode()).hexdigest()
             now = time.time()
