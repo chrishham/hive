@@ -345,14 +345,19 @@ class HiveApp(App):
                 self.state.sessions[new_name] = self.state.sessions.pop(data.name)
             self.state.save_default()
 
+    @work
     async def action_open_url(self) -> None:
         list_view = self.query_one("#session-panel", SessionListView)
         data = list_view.get_session_data()
         if data is None or not data.urls:
             return
-        first_live = next((u for u, alive in data.urls if alive), None)
-        if first_live:
-            webbrowser.open(f"http://{first_live}")
+        if len(data.urls) == 1:
+            webbrowser.open(f"http://{data.urls[0][0]}")
+        else:
+            from hive.widgets.dialogs import UrlPickerScreen
+            chosen = await self.push_screen_wait(UrlPickerScreen(data.urls))
+            if chosen:
+                webbrowser.open(f"http://{chosen}")
 
     async def action_attach_session(self) -> None:
         list_view = self.query_one("#session-panel", SessionListView)

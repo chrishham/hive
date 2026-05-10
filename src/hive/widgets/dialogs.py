@@ -249,6 +249,47 @@ class ConfirmKillScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class UrlPickerScreen(ModalScreen[str | None]):
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, urls: list[tuple[str, bool]]) -> None:
+        super().__init__()
+        self.urls = urls
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="picker-dialog"):
+            yield Label("Open URL:", id="picker-title")
+            items = []
+            for url, alive in self.urls:
+                icon = "🟢" if alive else "🔴"
+                items.append(ListItem(Label(f"  {icon} http://{url}"), name=url))
+            yield ListView(*items, id="url-list", initial_index=0)
+
+    def on_key(self, event) -> None:
+        lv = self.query_one("#url-list", ListView)
+        if event.key == "up":
+            lv.action_cursor_up()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "down":
+            lv.action_cursor_down()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "enter":
+            item = lv.highlighted_child
+            if isinstance(item, ListItem) and item.name:
+                self.dismiss(item.name)
+            event.prevent_default()
+            event.stop()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.item.name:
+            self.dismiss(event.item.name)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class RenameScreen(ModalScreen[str | None]):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
