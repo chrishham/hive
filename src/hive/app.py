@@ -33,7 +33,6 @@ class HiveApp(App):
 
     BINDINGS = [
         Binding("Q", "quit_app", "Quit all", show=False, key_display="Q"),
-        Binding("d", "detach", "Detach", show=False),
         Binding("n", "new_session", "New", show=False),
         Binding("f", "free_session", "Free", show=False),
         Binding("g", "clone_session", "Clone", show=False),
@@ -64,13 +63,31 @@ class HiveApp(App):
             yield SessionListView(id="session-panel", initial_index=0)
             yield PreviewPane("(no session selected)", id="preview-panel")
         yield Label(
-            "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  d:detach  Q:quit all",
+            "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  Q:quit",
             id="footer-bar",
         )
 
     async def on_mount(self) -> None:
         self.query_one("#session-panel", SessionListView).focus()
+        self._restore_sessions()
         self.poll_sessions()
+
+    def _restore_sessions(self) -> None:
+        if not self.state.sessions:
+            return
+        windows = self.tmux.list_windows()
+        existing_names = {w["name"] for w in windows if w["index"] != 0}
+        for name, info in list(self.state.sessions.items()):
+            if name in existing_names:
+                continue
+            project_path = info.get("project_path", "")
+            if not os.path.isdir(project_path):
+                self.state.remove_session(name)
+                continue
+            cmd = f"claude --name {name} --continue"
+            window_idx = self.tmux.new_window(name, project_path, cmd)
+            self.state.sessions[name]["tmux_window"] = window_idx
+        self.state.save_default()
 
     @work(exclusive=True)
     async def poll_sessions(self) -> None:
@@ -339,9 +356,6 @@ class HiveApp(App):
 
     async def action_search(self) -> None:
         pass
-
-    async def action_detach(self) -> None:
-        self.exit()
 
     async def action_quit_app(self) -> None:
         windows = self.tmux.list_windows()
