@@ -18,6 +18,7 @@ from textual.widgets import Label
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
 from hive.hook_state import read_session_state, remove_session_state
+from hive.install_hooks import hook_installed
 from hive.safety import (
     InvalidSessionName,
     TmuxError,
@@ -62,8 +63,6 @@ class HiveApp(App):
         self.tmux = TmuxClient(self.config.tmux_session_name)
         self.session_data_map: dict[str, SessionData] = {}
         self._last_attached: str | None = None
-        from hive.install_hooks import install_hooks
-        install_hooks()
 
     def compose(self) -> ComposeResult:
         waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
@@ -85,6 +84,8 @@ class HiveApp(App):
 
     async def on_mount(self) -> None:
         self.query_one("#session-panel", SessionListView).focus()
+        if not hook_installed():
+            self._set_info_banner("Hooks not installed. Run 'hive install-hooks' to enable state detection.")
         self._restore_sessions()
         self.poll_sessions()
 

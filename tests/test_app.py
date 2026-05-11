@@ -34,16 +34,17 @@ class TestSessionData:
 
 class TestHiveAppSmoke:
     @pytest.mark.asyncio
-    @patch("hive.install_hooks.install_hooks")
+    @patch("hive.app.hook_installed")
     @patch("hive.app.TmuxClient")
     @patch("hive.app.HiveConfig.load_default")
     @patch("hive.app.HiveState.load_default")
-    async def test_app_mounts(self, mock_state, mock_config, mock_tmux, mock_install_hooks):
+    async def test_app_mounts(self, mock_state, mock_config, mock_tmux, mock_hook_installed):
         mock_config.return_value = HiveConfig.defaults()
         mock_state.return_value = HiveState()
         mock_tmux_instance = MagicMock()
         mock_tmux_instance.list_windows.return_value = []
         mock_tmux.return_value = mock_tmux_instance
+        mock_hook_installed.return_value = True
 
         from hive.app import HiveApp
         app = HiveApp()
@@ -53,15 +54,15 @@ class TestHiveAppSmoke:
             assert "hive" in str(header.render()).lower()
             footer = app.query_one("#footer-bar", Label)
             assert "n:new" in str(footer.render())
-        mock_install_hooks.assert_called_once()
+        mock_hook_installed.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("hive.install_hooks.install_hooks")
+    @patch("hive.app.hook_installed")
     @patch("hive.app.TmuxClient")
     @patch("hive.app.HiveConfig.load_default")
     @patch("hive.app.HiveState.load_default")
     async def test_hook_state_overrides_pane_detection(
-        self, mock_state, mock_config, mock_tmux, mock_install_hooks, tmp_path, monkeypatch
+        self, mock_state, mock_config, mock_tmux, mock_hook_installed, tmp_path, monkeypatch
     ):
         monkeypatch.setenv("HOME", str(tmp_path))
         state_file = tmp_path / ".claude" / "hive" / "state" / "sess1.json"
@@ -80,6 +81,7 @@ class TestHiveAppSmoke:
         )
         mock_tmux_instance.capture_pane_scrollback.return_value = ""
         mock_tmux.return_value = mock_tmux_instance
+        mock_hook_installed.return_value = True
 
         from hive.app import HiveApp
         app = HiveApp()
@@ -90,14 +92,15 @@ class TestHiveAppSmoke:
 
 
 @pytest.mark.asyncio
-@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")
 @patch("hive.app.HiveConfig.load_default")
 @patch("hive.app.HiveState.load_default")
-async def test_create_session_validates_name(mock_state, mock_config, mock_tmux, mock_install_hooks):
+async def test_create_session_validates_name(mock_state, mock_config, mock_tmux, mock_hook_installed):
     mock_config.return_value = HiveConfig.defaults()
     mock_state.return_value = HiveState()
     mock_tmux.return_value = MagicMock()
+    mock_hook_installed.return_value = True
     from hive.app import HiveApp
     app = HiveApp()
     with pytest.raises(InvalidSessionName):
@@ -105,12 +108,12 @@ async def test_create_session_validates_name(mock_state, mock_config, mock_tmux,
 
 
 @pytest.mark.asyncio
-@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")
 @patch("hive.app.HiveConfig.load_default")
 @patch("hive.app.HiveState.load_default")
 async def test_restore_sanitizes_bad_existing_state(
-    mock_state, mock_config, mock_tmux, mock_install_hooks, tmp_path
+    mock_state, mock_config, mock_tmux, mock_hook_installed, tmp_path
 ):
     mock_config.return_value = HiveConfig.defaults()
     state = HiveState()
@@ -122,6 +125,7 @@ async def test_restore_sanitizes_bad_existing_state(
         }
     }
     mock_state.return_value = state
+    mock_hook_installed.return_value = True
 
     captured: dict = {}
 
@@ -150,12 +154,12 @@ async def test_restore_sanitizes_bad_existing_state(
 
 
 @pytest.mark.asyncio
-@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")
 @patch("hive.app.HiveConfig.load_default")
 @patch("hive.app.HiveState.load_default")
 async def test_restore_does_not_infinite_loop_on_long_colliding_names(
-    mock_state, mock_config, mock_tmux, mock_install_hooks, tmp_path
+    mock_state, mock_config, mock_tmux, mock_hook_installed, tmp_path
 ):
     mock_config.return_value = HiveConfig.defaults()
     state = HiveState()
@@ -165,6 +169,7 @@ async def test_restore_does_not_infinite_loop_on_long_colliding_names(
         long_a + " bad": {"project_path": str(tmp_path), "tmux_window": 2, "claude_session_id": ""},
     }
     mock_state.return_value = state
+    mock_hook_installed.return_value = True
 
     tmux_instance = MagicMock()
     tmux_instance.list_windows.return_value = []
@@ -183,16 +188,17 @@ async def test_restore_does_not_infinite_loop_on_long_colliding_names(
 
 
 @pytest.mark.asyncio
-@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")
 @patch("hive.app.HiveConfig.load_default")
 @patch("hive.app.HiveState.load_default")
 async def test_refresh_exception_is_caught_and_banner_set(
-    mock_state, mock_config, mock_tmux, mock_install_hooks
+    mock_state, mock_config, mock_tmux, mock_hook_installed
 ):
     mock_config.return_value = HiveConfig.defaults()
     mock_state.return_value = HiveState()
     mock_tmux.return_value = MagicMock()
+    mock_hook_installed.return_value = True
     from hive.app import HiveApp
     app = HiveApp()
 
@@ -209,16 +215,17 @@ async def test_refresh_exception_is_caught_and_banner_set(
 
 
 @pytest.mark.asyncio
-@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")
 @patch("hive.app.HiveConfig.load_default")
 @patch("hive.app.HiveState.load_default")
 async def test_refresh_success_clears_banner(
-    mock_state, mock_config, mock_tmux, mock_install_hooks
+    mock_state, mock_config, mock_tmux, mock_hook_installed
 ):
     mock_config.return_value = HiveConfig.defaults()
     mock_state.return_value = HiveState()
     mock_tmux.return_value = MagicMock()
+    mock_hook_installed.return_value = True
     from hive.app import HiveApp
     app = HiveApp()
 
@@ -234,12 +241,12 @@ async def test_refresh_success_clears_banner(
     assert cleared["flag"] is True
 
 
-@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")
 @patch("hive.app.HiveConfig.load_default")
 @patch("hive.app.HiveState.load_default")
 def test_status_bar_escapes_hash_in_session_name(
-    mock_state, mock_config, mock_tmux, mock_install_hooks
+    mock_state, mock_config, mock_tmux, mock_hook_installed
 ):
     mock_config.return_value = HiveConfig.defaults()
     mock_state.return_value = HiveState()
@@ -247,6 +254,7 @@ def test_status_bar_escapes_hash_in_session_name(
     captured: dict[str, str] = {}
     tmux_instance.set_status_bar = lambda t: captured.setdefault("text", t)
     mock_tmux.return_value = tmux_instance
+    mock_hook_installed.return_value = True
 
     from hive.app import HiveApp
     app = HiveApp()

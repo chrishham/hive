@@ -2,6 +2,8 @@
 import json
 import subprocess
 import sys
+import threading
+from io import StringIO
 
 import pytest
 
@@ -134,3 +136,34 @@ def test_session_start_writes_waiting(tmp_path, hook_env):
     data = json.loads(_state_file(tmp_path, "foo").read_text())
     assert data["state"] == "waiting"
     assert data["event"] == "SessionStart"
+
+
+def test_concurrent_writers_no_collision(tmp_path, monkeypatch):
+    from hive import hook_writer
+
+    monkeypatch.setattr(hook_writer, "state_dir", lambda: tmp_path)
+    monkeypatch.setattr(hook_writer, "state_file_path", lambda n: tmp_path / f"{n}.json")
+    monkeypatch.setenv("HIVE_SESSION", "race-test")
+
+    payloads = [
+        {"hook_event_name": "Stop", "session_id": f"s{i}"}
+        for i in range(20)
+    ]
+    errors: list[Exception] = []
+
+    def fire(p):
+        try:
+            monkeypatch.setattr("sys.stdin", StringIO(json.dumps(p)))
+            hook_writer.main()
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=fire, args=(p,)) for p in payloads]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    final = json.loads((tmp_path / "race-test.json").read_text())
+    assert final["state"] == "waiting"

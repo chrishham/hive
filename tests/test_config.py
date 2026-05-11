@@ -79,3 +79,32 @@ class TestHiveState:
         state.add_session("my-sess", "/tmp/proj", 2, "uuid-here")
         state.remove_session("my-sess")
         assert "my-sess" not in state.sessions
+
+
+def test_state_save_is_atomic(tmp_path):
+    from hive.config import HiveState
+    state = HiveState()
+    state.sessions["abc"] = {"project_path": "/tmp"}
+    target = tmp_path / "state.json"
+    state.save(target)
+    assert target.exists()
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name != "state.json"]
+    assert leftovers == []
+
+
+def test_state_load_tolerates_malformed_file(tmp_path):
+    from hive.config import HiveState
+    target = tmp_path / "state.json"
+    target.write_text("{ not valid json")
+    state = HiveState.load(target)
+    assert state.sessions == {}
+    assert state.projects == {}
+
+
+def test_config_load_tolerates_malformed_file(tmp_path):
+    from hive.config import HiveConfig
+    target = tmp_path / "config.toml"
+    target.write_text("not [valid toml")
+    cfg = HiveConfig.load(target)
+    # Falls back to defaults
+    assert cfg.tmux_session_name == "hive"

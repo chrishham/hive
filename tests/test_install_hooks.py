@@ -1,4 +1,6 @@
 import json
+import shlex
+import sys
 
 import pytest
 
@@ -65,7 +67,42 @@ def test_install_refuses_corrupt_settings(fake_home):
 
 
 def test_install_returns_false_on_write_error(fake_home, monkeypatch):
-    def raise_oserror(self, *args, **kwargs):
+    def raise_oserror(*args, **kwargs):
         raise OSError("simulated permission denied")
-    monkeypatch.setattr("pathlib.Path.write_text", raise_oserror)
+    monkeypatch.setattr("hive.install_hooks.atomic_write_text", raise_oserror)
     assert install_hooks() is False
+
+
+def test_install_writes_absolute_command(tmp_path, monkeypatch):
+    from hive.install_hooks import install_hooks, HOOK_COMMAND, settings_path
+    monkeypatch.setattr("hive.install_hooks.settings_path", lambda: tmp_path / "settings.json")
+    assert install_hooks() is True
+    data = json.loads((tmp_path / "settings.json").read_text())
+    expected = f"{shlex.quote(sys.executable)} -m hive.hook_writer"
+    found_commands = [
+        h["command"]
+        for entries in data["hooks"].values()
+        for entry in entries
+        for h in entry.get("hooks", [])
+    ]
+    assert expected in found_commands
+    assert HOOK_COMMAND == expected
+
+
+def test_install_atomic_no_temp_left(tmp_path, monkeypatch):
+    from hive.install_hooks import install_hooks
+    monkeypatch.setattr("hive.install_hooks.settings_path", lambda: tmp_path / "settings.json")
+    install_hooks()
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name != "settings.json"]
+    assert leftovers == []
+
+
+def test_install_tolerates_malformed_hooks_key(tmp_path, monkeypatch):
+    from hive.install_hooks import install_hooks
+    target = tmp_path / "settings.json"
+    target.write_text(json.dumps({"hooks": "not-a-dict", "other": {"k": 1}}))
+    monkeypatch.setattr("hive.install_hooks.settings_path", lambda: target)
+    assert install_hooks() is True
+    data = json.loads(target.read_text())
+    assert isinstance(data["hooks"], dict)
+    assert data["other"] == {"k": 1}

@@ -12,6 +12,8 @@ if sys.version_info >= (3, 12):
 else:
     import tomli as tomllib
 
+from hive.safety import atomic_write_text
+
 DEFAULT_SCAN_PATHS = [str(Path.home() / "Projects")]
 DEFAULT_CLONE_PATH = str(Path.home() / "Projects")
 CONFIG_DIR = Path.home() / ".config" / "hive"
@@ -33,18 +35,24 @@ class HiveConfig:
     def load(cls, path: Path) -> HiveConfig:
         if not path.exists():
             return cls.defaults()
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-        projects = data.get("projects", {})
-        display = data.get("display", {})
-        tmux = data.get("tmux", {})
-        return cls(
-            scan_paths=projects.get("scan_paths", DEFAULT_SCAN_PATHS),
-            clone_path=projects.get("clone_path", DEFAULT_CLONE_PATH),
-            refresh_interval_ms=display.get("refresh_interval_ms", 2500),
-            preview_lines=display.get("preview_lines", 20),
-            tmux_session_name=tmux.get("session_name", "hive"),
-        )
+        try:
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+            if not isinstance(data, dict):
+                return cls.defaults()
+            projects = data.get("projects", {}) if isinstance(data.get("projects"), dict) else {}
+            display = data.get("display", {}) if isinstance(data.get("display"), dict) else {}
+            tmux = data.get("tmux", {}) if isinstance(data.get("tmux"), dict) else {}
+            return cls(
+                scan_paths=projects.get("scan_paths", DEFAULT_SCAN_PATHS),
+                clone_path=projects.get("clone_path", DEFAULT_CLONE_PATH),
+                refresh_interval_ms=int(display.get("refresh_interval_ms", 2500)),
+                preview_lines=int(display.get("preview_lines", 20)),
+                tmux_session_name=str(tmux.get("session_name", "hive")),
+            )
+        except (tomllib.TOMLDecodeError, OSError, TypeError, ValueError) as exc:
+            print(f"hive: config load failed, using defaults: {exc}", file=sys.stderr)
+            return cls.defaults()
 
     @classmethod
     def load_default(cls) -> HiveConfig:
@@ -60,21 +68,24 @@ class HiveState:
     def load(cls, path: Path) -> HiveState:
         if not path.exists():
             return cls()
-        with open(path) as f:
-            data = json.load(f)
-        return cls(
-            sessions=data.get("sessions", {}),
-            projects=data.get("projects", {}),
-        )
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return cls()
+            sessions = data.get("sessions", {}) if isinstance(data.get("sessions"), dict) else {}
+            projects = data.get("projects", {}) if isinstance(data.get("projects"), dict) else {}
+            return cls(sessions=sessions, projects=projects)
+        except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
+            print(f"hive: state load failed, using empty: {exc}", file=sys.stderr)
+            return cls()
 
     @classmethod
     def load_default(cls) -> HiveState:
         return cls.load(CONFIG_DIR / "state.json")
 
     def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump({"sessions": self.sessions, "projects": self.projects}, f, indent=2)
+        atomic_write_text(path, json.dumps({"sessions": self.sessions, "projects": self.projects}, indent=2))
 
     def save_default(self) -> None:
         self.save(CONFIG_DIR / "state.json")
