@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 from hive.widgets.session_list import SessionListItem, SessionData
@@ -52,3 +53,36 @@ class TestHiveAppSmoke:
             footer = app.query_one("#footer-bar", Label)
             assert "n:new" in str(footer.render())
         mock_install_hooks.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("hive.install_hooks.install_hooks")
+    @patch("hive.app.TmuxClient")
+    @patch("hive.app.HiveConfig.load_default")
+    @patch("hive.app.HiveState.load_default")
+    async def test_hook_state_overrides_pane_detection(
+        self, mock_state, mock_config, mock_tmux, mock_install_hooks, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        state_file = tmp_path / ".claude" / "hive" / "state" / "sess1.json"
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps({"state": "working"}))
+
+        mock_config.return_value = HiveConfig.defaults()
+        mock_state.return_value = HiveState()
+        mock_tmux_instance = MagicMock()
+        mock_tmux_instance.list_windows.return_value = [
+            {"index": 1, "name": "sess1", "active": True}
+        ]
+        # Pane text would otherwise classify as WAITING
+        mock_tmux_instance.capture_pane.return_value = (
+            "Claude Code v2.1\n╭───╮\n│ > │\n╰───╯\n"
+        )
+        mock_tmux_instance.capture_pane_scrollback.return_value = ""
+        mock_tmux.return_value = mock_tmux_instance
+
+        from hive.app import HiveApp
+        app = HiveApp()
+        async with app.run_test() as pilot:
+            await app._refresh_sessions()
+            data = app.session_data_map["sess1"]
+            assert data.state == SessionState.WORKING
