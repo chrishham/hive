@@ -20,12 +20,17 @@ def _claude_projects_dir() -> Path:
     return Path.home() / ".claude" / "projects"
 
 
+def _encode_project_path(project_path: str) -> str:
+    resolved = str(Path(project_path).resolve())
+    return resolved.replace("/", "-")
+
+
 def extract_conversation(
     project_path: str,
     session_id: str,
     max_chars: int = 4000,
 ) -> list[dict[str, str]]:
-    encoded = project_path.replace("/", "-")
+    encoded = _encode_project_path(project_path)
     jsonl_path = _claude_projects_dir() / encoded / f"{session_id}.jsonl"
     if not jsonl_path.is_file():
         return []
@@ -184,8 +189,8 @@ def _get_client():
 
 
 def _jsonl_path(project_path: str, session_id: str) -> Path:
-    encoded = project_path.replace("/", "-")
-    return Path.home() / ".claude" / "projects" / encoded / f"{session_id}.jsonl"
+    encoded = _encode_project_path(project_path)
+    return _claude_projects_dir() / encoded / f"{session_id}.jsonl"
 
 
 def _fallback_synopsis(project_path: str, session_id: str) -> str:
