@@ -62,7 +62,6 @@ class HiveApp(App):
         Binding("r", "resume_session", "Resume", show=False),
         Binding("R", "rename_session", "Rename", show=False, key_display="R"),
         Binding("u", "open_url", "URL", show=False),
-        Binding("slash", "search", "Search", show=False),
         Binding("enter", "attach_session", "Attach", show=False),
     ]
 
@@ -88,7 +87,7 @@ class HiveApp(App):
             yield SessionListView(id="session-panel", initial_index=0)
             yield PreviewPane("(no session selected)", id="preview-panel")
         yield Label(
-            "n:new  f:free  g:clone  k:kill  R:rename  u:url  /:search  ↵:attach  Q:quit",
+            "n:new  f:free  g:clone  k:kill  R:rename  u:url  ↵:attach  Q:quit",
             id="footer-bar",
         )
 
@@ -527,9 +526,6 @@ class HiveApp(App):
         if data:
             self._last_attached = data.name
             self.tmux.select_window(data.tmux_window)
-
-    async def action_search(self) -> None:
-        pass
 
     async def action_quit_app(self) -> None:
         windows = self.tmux.list_windows()
