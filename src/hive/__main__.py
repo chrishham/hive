@@ -9,6 +9,29 @@ from hive.safety import InvalidSessionName, TmuxError, sanitize_session_name, va
 from hive.tmux import TmuxClient
 
 DASHBOARD_LOG = Path.home() / ".claude" / "hive" / "dashboard.log"
+DASHBOARD_LOG_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _rotate_dashboard_log() -> None:
+    try:
+        st = os.lstat(DASHBOARD_LOG)
+    except FileNotFoundError:
+        return
+    import stat as _stat
+    if not _stat.S_ISREG(st.st_mode):
+        # Symlink or other non-regular file: remove so O_NOFOLLOW open succeeds
+        # (and to refuse the attacker's chosen target).
+        try:
+            os.unlink(DASHBOARD_LOG)
+        except OSError:
+            pass
+        return
+    if st.st_size > DASHBOARD_LOG_MAX_BYTES:
+        rotated = DASHBOARD_LOG.with_suffix(".log.1")
+        try:
+            os.replace(DASHBOARD_LOG, rotated)
+        except OSError:
+            pass
 
 
 def main() -> None:
@@ -76,6 +99,7 @@ def main() -> None:
 
     if os.environ.get("TMUX"):
         DASHBOARD_LOG.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_dashboard_log()
         # Textual writes the TUI to sys.__stderr__; reassign sys.stderr so our
         # logging/tracebacks land in the file without hijacking Textual's output.
         flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)

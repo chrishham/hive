@@ -121,6 +121,28 @@ class TestAtomicWriteTextSymlinkSafety:
         with pytest.raises(OSError):
             atomic_write_text(link / "out.json", "data")
 
+    def test_does_not_traverse_symlink_in_parent_chain(self, tmp_path):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        link = tmp_path / "via_link"
+        link.symlink_to(outside)
+        with pytest.raises(OSError):
+            atomic_write_text(link / "sub" / "out.json", "data")
+        assert not (outside / "sub").exists()
+
+    def test_no_temp_left_when_target_is_symlink(self, tmp_path):
+        target = tmp_path / "out.json"
+        elsewhere = tmp_path / "elsewhere.json"
+        elsewhere.write_text("victim")
+        target.symlink_to(elsewhere)
+        with pytest.raises(OSError):
+            atomic_write_text(target, "attacker")
+        leftovers = [
+            p.name for p in tmp_path.iterdir()
+            if p.name not in {"out.json", "elsewhere.json"}
+        ]
+        assert leftovers == []
+
 
 class TestEscapeTmuxFormat:
     def test_doubles_hash(self):

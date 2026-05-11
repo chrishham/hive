@@ -103,6 +103,7 @@ class HiveApp(App):
         self.tmux = TmuxClient(self.config.tmux_session_name)
         self.session_data_map: dict[str, SessionData] = {}
         self._last_attached: str | None = None
+        self._url_cache: dict[int, tuple[int, list[tuple[str, bool]]]] = {}
 
     def compose(self) -> ComposeResult:
         waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
@@ -252,8 +253,14 @@ class HiveApp(App):
             model, context_str = detect_model(pane_text)
 
             scrollback = self.tmux.capture_pane_scrollback(win["index"])
-            raw_urls = detect_urls(scrollback)
-            urls = [(u, probe_url(u)) for u in raw_urls[:5]]
+            scrollback_hash = hash(scrollback)
+            cached = self._url_cache.get(win["index"])
+            if cached is not None and cached[0] == scrollback_hash:
+                urls = cached[1]
+            else:
+                raw_urls = detect_urls(scrollback)
+                urls = [(u, probe_url(u)) for u in raw_urls[:5]]
+                self._url_cache[win["index"]] = (scrollback_hash, urls)
 
             project_path = self.state.sessions.get(name, {}).get("project_path", "~")
 
@@ -275,6 +282,10 @@ class HiveApp(App):
         removed = set(self.session_data_map.keys()) - current_names
         for name in removed:
             del self.session_data_map[name]
+        live_indices = {win["index"] for win in windows}
+        for idx in list(self._url_cache.keys()):
+            if idx not in live_indices:
+                del self._url_cache[idx]
 
         self._rebuild_list(list_view)
         self._ensure_highlight(list_view)

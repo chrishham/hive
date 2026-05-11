@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import re
-import tempfile
 from pathlib import Path
 
 SESSION_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -36,30 +35,98 @@ def sanitize_session_name(name: str) -> str:
     return cleaned
 
 
-def atomic_write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    parent = path.parent
-    if parent.is_symlink():
-        raise OSError(f"refusing to write under symlinked directory: {parent}")
-    if path.is_symlink():
-        raise OSError(f"refusing to overwrite symlink: {path}")
-    fd, tmp_name = tempfile.mkstemp(
-        dir=parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    )
+def _open_dir_no_symlinks(parent: Path) -> int:
+    """Open `parent` ensuring no component is a symlink. Returns a dirfd."""
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory = getattr(os, "O_DIRECTORY", 0)
+    parts = parent.resolve(strict=False).parts if not parent.is_absolute() else parent.parts
+    if not parent.is_absolute():
+        parts = parent.absolute().parts
+    cur_fd = os.open(parts[0], os.O_RDONLY | directory)
     try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_name, path)
+        for component in parts[1:]:
+            try:
+                next_fd = os.open(
+                    component,
+                    os.O_RDONLY | directory | nofollow,
+                    dir_fd=cur_fd,
+                )
+            except OSError as exc:
+                raise OSError(f"refusing to traverse {parent}: {exc}") from exc
+            os.close(cur_fd)
+            cur_fd = next_fd
+        return cur_fd
     except BaseException:
+        os.close(cur_fd)
+        raise
+
+
+def _refuse_symlink_in_existing_chain(parent: Path) -> None:
+    abs_parent = parent.absolute()
+    cur = Path(abs_parent.parts[0])
+    for component in abs_parent.parts[1:]:
+        cur = cur / component
+        if not cur.exists():
+            return
+        if cur.is_symlink():
+            raise OSError(f"refusing to traverse symlink: {cur}")
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    parent = path.parent
+    _refuse_symlink_in_existing_chain(parent)
+    parent.mkdir(parents=True, exist_ok=True)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    try:
+        dir_fd = _open_dir_no_symlinks(parent)
+    except OSError as exc:
+        raise OSError(f"refusing to open parent directory: {parent}") from exc
+    tmp_name: str | None = None
+    try:
+        # mkstemp doesn't accept dir_fd; create relative path under the
+        # already-validated parent fd via openat semantics by passing the
+        # fd-relative name to os.open.
+        prefix = f".{path.name}."
+        for _ in range(64):
+            candidate = f"{prefix}{os.urandom(6).hex()}.tmp"
+            try:
+                fd = os.open(
+                    candidate,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow,
+                    0o600,
+                    dir_fd=dir_fd,
+                )
+                tmp_name = candidate
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise OSError("could not allocate temp file")
         try:
-            os.unlink(tmp_name)
+            with os.fdopen(fd, "w") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+        except BaseException:
+            os.unlink(tmp_name, dir_fd=dir_fd)
+            raise
+        # Ensure final destination, if it exists, is not a symlink.
+        try:
+            st = os.stat(path.name, dir_fd=dir_fd, follow_symlinks=False)
+            import stat as _stat
+            if _stat.S_ISLNK(st.st_mode):
+                raise OSError(f"refusing to replace symlink: {path}")
         except FileNotFoundError:
             pass
-        raise
+        os.replace(tmp_name, path.name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        tmp_name = None
+    finally:
+        if tmp_name is not None:
+            try:
+                os.unlink(tmp_name, dir_fd=dir_fd)
+            except FileNotFoundError:
+                pass
+        os.close(dir_fd)
 
 
 def escape_tmux_format(text: str) -> str:
