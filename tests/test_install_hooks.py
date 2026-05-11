@@ -93,7 +93,10 @@ def test_install_atomic_no_temp_left(tmp_path, monkeypatch):
     from hive.install_hooks import install_hooks
     monkeypatch.setattr("hive.install_hooks.settings_path", lambda: tmp_path / "settings.json")
     install_hooks()
-    leftovers = [p.name for p in tmp_path.iterdir() if p.name != "settings.json"]
+    leftovers = [
+        p.name for p in tmp_path.iterdir()
+        if p.name not in {"settings.json", ".hive-settings.lock"}
+    ]
     assert leftovers == []
 
 

@@ -138,6 +138,32 @@ def test_session_start_writes_waiting(tmp_path, hook_env):
     assert data["event"] == "SessionStart"
 
 
+def test_oversized_stdin_is_rejected(tmp_path, hook_env):
+    env = {**hook_env, "HIVE_SESSION": "foo"}
+    huge = b"x" * (200 * 1024)  # 200KB > cap
+    result = subprocess.run(
+        [sys.executable, "-m", "hive.hook_writer"],
+        input=huge,
+        env=env,
+        cwd="/data/Projects/hive",
+        capture_output=True,
+        timeout=5,
+    )
+    assert result.returncode == 0
+    assert not _state_file(tmp_path, "foo").exists()
+
+
+def test_oversized_session_id_is_truncated_or_rejected(tmp_path, hook_env):
+    env = {**hook_env, "HIVE_SESSION": "foo"}
+    payload = {"hook_event_name": "Stop", "session_id": "a" * 10000}
+    result = _run(payload, env, "/data/Projects/hive")
+    assert result.returncode == 0
+    sf = _state_file(tmp_path, "foo")
+    if sf.exists():
+        data = json.loads(sf.read_text())
+        assert len(data["session_id"]) <= 256
+
+
 def test_concurrent_writers_no_collision(tmp_path, monkeypatch):
     from hive import hook_writer
 

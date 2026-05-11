@@ -285,6 +285,65 @@ def test_validate_clone_target_accepts_normal_repo(tmp_path):
     assert _validate_clone_target(str(tmp_path), "myrepo") == str(tmp_path / "myrepo")
 
 
+class TestValidateCloneUrl:
+    @pytest.mark.parametrize("url", [
+        "https://github.com/user/repo.git",
+        "http://example.com/repo",
+        "ssh://git@github.com/user/repo.git",
+        "git://github.com/user/repo.git",
+        "git@github.com:user/repo.git",
+        "git@gitlab.example.com:group/sub/repo.git",
+    ])
+    def test_accepts_valid(self, url):
+        from hive.app import _validate_clone_url
+        assert _validate_clone_url(url) == url
+
+    @pytest.mark.parametrize("url", [
+        "",
+        "   ",
+        "-upload-pack=evil",
+        "--upload-pack=evil",
+        "-",
+        "/local/path",
+        "file:///etc/passwd",
+        "ext::sh -c id",
+        "javascript:alert(1)",
+        "ftp://example.com/repo",
+    ])
+    def test_rejects_invalid(self, url):
+        from hive.app import _validate_clone_url
+        with pytest.raises(ValueError):
+            _validate_clone_url(url)
+
+    def test_rejects_url_with_newline(self):
+        from hive.app import _validate_clone_url
+        with pytest.raises(ValueError):
+            _validate_clone_url("https://example.com/repo\nrm -rf /")
+
+
+class TestRedactGitOutput:
+    def test_redacts_basic_auth_in_url(self):
+        from hive.app import _redact_git_output
+        out = _redact_git_output("fatal: failed to clone https://abc123token@github.com/u/r.git")
+        assert "abc123token" not in out
+        assert "REDACTED" in out
+
+    def test_redacts_user_password_in_url(self):
+        from hive.app import _redact_git_output
+        out = _redact_git_output("ssh://user:secretpw@host/repo.git")
+        assert "secretpw" not in out
+        assert "user" not in out or "REDACTED" in out
+
+    def test_passthrough_when_no_credentials(self):
+        from hive.app import _redact_git_output
+        msg = "fatal: repository 'https://github.com/u/r.git/' not found"
+        assert _redact_git_output(msg) == msg
+
+    def test_handles_empty(self):
+        from hive.app import _redact_git_output
+        assert _redact_git_output("") == ""
+
+
 @pytest.mark.asyncio
 @patch("hive.app.hook_installed")
 @patch("hive.app.TmuxClient")

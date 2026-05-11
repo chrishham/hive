@@ -12,7 +12,7 @@ if sys.version_info >= (3, 12):
 else:
     import tomli as tomllib
 
-from hive.safety import atomic_write_text
+from hive.safety import atomic_write_text, sanitize_session_name
 
 DEFAULT_SCAN_PATHS = [str(Path.home() / "Projects")]
 DEFAULT_CLONE_PATH = str(Path.home() / "Projects")
@@ -48,7 +48,7 @@ class HiveConfig:
                 clone_path=projects.get("clone_path", DEFAULT_CLONE_PATH),
                 refresh_interval_ms=int(display.get("refresh_interval_ms", 2500)),
                 preview_lines=int(display.get("preview_lines", 20)),
-                tmux_session_name=str(tmux.get("session_name", "hive")),
+                tmux_session_name=sanitize_session_name(str(tmux.get("session_name", "hive"))),
             )
         except (tomllib.TOMLDecodeError, OSError, TypeError, ValueError) as exc:
             print(f"hive: config load failed, using defaults: {exc}", file=sys.stderr)

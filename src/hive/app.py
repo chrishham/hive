@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -48,6 +49,36 @@ def _validate_clone_target(clone_path: str, repo_name: str) -> str:
     if not target.is_relative_to(base):
         raise ValueError(f"target escapes clone path: {target}")
     return str(target)
+
+
+_ALLOWED_URL_SCHEMES = ("https://", "http://", "ssh://", "git://")
+_SCP_URL_RE = re.compile(r"^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+:[^\s]+$")
+
+
+def _validate_clone_url(url: str) -> str:
+    if not isinstance(url, str):
+        raise ValueError("url must be a string")
+    if any(c in url for c in "\r\n\t\x00"):
+        raise ValueError("url contains control characters")
+    stripped = url.strip()
+    if not stripped:
+        raise ValueError("url is empty")
+    if stripped.startswith("-"):
+        raise ValueError("url may not start with '-'")
+    if any(stripped.lower().startswith(s) for s in _ALLOWED_URL_SCHEMES):
+        return stripped
+    if _SCP_URL_RE.match(stripped):
+        return stripped
+    raise ValueError(f"unsupported url: {stripped!r}")
+
+
+_CRED_URL_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@")
+
+
+def _redact_git_output(text: str) -> str:
+    if not text:
+        return text
+    return _CRED_URL_RE.sub(r"\1REDACTED@", text)
 
 
 class HiveApp(App):
@@ -434,9 +465,15 @@ class HiveApp(App):
         result = await self.push_screen_wait(CloneScreen(self.config.clone_path))
         if result is None:
             return
-        url = result["url"]
         clone_path = result["clone_path"]
+        try:
+            url = _validate_clone_url(result["url"])
+        except ValueError as exc:
+            await self.push_screen_wait(ErrorScreen("Clone refused", str(exc)))
+            return
         repo_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
+        if ":" in repo_name and "/" not in repo_name:
+            repo_name = repo_name.split(":")[-1]
         try:
             target = _validate_clone_target(clone_path, repo_name)
         except ValueError as exc:
@@ -450,12 +487,18 @@ class HiveApp(App):
             if choice == "pull":
                 rc = subprocess.run(["git", "-C", target, "pull"], capture_output=True, text=True)
                 if rc.returncode != 0:
-                    await self.push_screen_wait(ErrorScreen("git pull failed", rc.stderr.strip()))
+                    await self.push_screen_wait(
+                        ErrorScreen("git pull failed", _redact_git_output(rc.stderr.strip()))
+                    )
                     return
         else:
-            rc = subprocess.run(["git", "clone", url, target], capture_output=True, text=True)
+            rc = subprocess.run(
+                ["git", "clone", "--", url, target], capture_output=True, text=True
+            )
             if rc.returncode != 0:
-                await self.push_screen_wait(ErrorScreen("git clone failed", rc.stderr.strip()))
+                await self.push_screen_wait(
+                    ErrorScreen("git clone failed", _redact_git_output(rc.stderr.strip()))
+                )
                 return
 
         name = self._next_session_name(repo_name)

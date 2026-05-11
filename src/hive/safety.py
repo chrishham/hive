@@ -38,8 +38,13 @@ def sanitize_session_name(name: str) -> str:
 
 def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    parent = path.parent
+    if parent.is_symlink():
+        raise OSError(f"refusing to write under symlinked directory: {parent}")
+    if path.is_symlink():
+        raise OSError(f"refusing to overwrite symlink: {path}")
     fd, tmp_name = tempfile.mkstemp(
-        dir=path.parent,
+        dir=parent,
         prefix=f".{path.name}.",
         suffix=".tmp",
     )

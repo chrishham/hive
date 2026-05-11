@@ -101,6 +101,16 @@ def test_state_load_tolerates_malformed_file(tmp_path):
     assert state.projects == {}
 
 
+def test_config_sanitizes_unsafe_tmux_session_name(tmp_path):
+    from hive.config import HiveConfig
+    from hive.safety import validate_session_name
+    target = tmp_path / "config.toml"
+    target.write_text('[tmux]\nsession_name = "evil; rm -rf /"\n')
+    cfg = HiveConfig.load(target)
+    # whatever sanitization produces, it must pass validate_session_name
+    validate_session_name(cfg.tmux_session_name)
+
+
 def test_config_load_tolerates_malformed_file(tmp_path):
     from hive.config import HiveConfig
     target = tmp_path / "config.toml"

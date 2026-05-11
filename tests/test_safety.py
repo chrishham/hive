@@ -103,6 +103,25 @@ class TestAtomicWriteText:
         assert final.startswith("payload-")
 
 
+class TestAtomicWriteTextSymlinkSafety:
+    def test_refuses_symlink_target(self, tmp_path):
+        target = tmp_path / "out.json"
+        elsewhere = tmp_path / "elsewhere.json"
+        elsewhere.write_text("victim")
+        target.symlink_to(elsewhere)
+        with pytest.raises(OSError):
+            atomic_write_text(target, "attacker")
+        assert elsewhere.read_text() == "victim"
+
+    def test_refuses_symlinked_parent(self, tmp_path):
+        real = tmp_path / "real_dir"
+        real.mkdir()
+        link = tmp_path / "linked_dir"
+        link.symlink_to(real)
+        with pytest.raises(OSError):
+            atomic_write_text(link / "out.json", "data")
+
+
 class TestEscapeTmuxFormat:
     def test_doubles_hash(self):
         assert escape_tmux_format("a#b") == "a##b"

@@ -76,7 +76,7 @@ class TestTmuxClient:
         output = self.tmux.capture_pane_scrollback(1)
         assert output == "scrollback\n"
         mock_run.assert_called_once_with(
-            ["tmux", "capture-pane", "-t", "test-hive:1", "-p", "-S", "-"],
+            ["tmux", "capture-pane", "-t", "test-hive:1", "-p", "-S", "-1000"],
             capture_output=True,
             text=True,
         )

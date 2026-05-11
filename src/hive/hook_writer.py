@@ -16,18 +16,34 @@ EVENT_TO_STATE = {
     "SessionStart": "waiting",
 }
 
+_MAX_STDIN_BYTES = 64 * 1024
+_MAX_SESSION_ID_LEN = 256
+
 
 def main() -> int:
     session_name = os.environ.get("HIVE_SESSION")
     if not session_name:
         return 0
     try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+        raw = sys.stdin.buffer.read(_MAX_STDIN_BYTES + 1)
+    except (AttributeError, OSError):
+        try:
+            raw = sys.stdin.read(_MAX_STDIN_BYTES + 1).encode("utf-8", errors="replace")
+        except Exception:
+            return 0
+    if len(raw) > _MAX_STDIN_BYTES:
+        return 0
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
         return 0
     if not isinstance(payload, dict):
         return 0
     event = payload.get("hook_event_name", "")
+    raw_session_id = payload.get("session_id", "")
+    if not isinstance(raw_session_id, str):
+        raw_session_id = ""
+    session_id = raw_session_id[:_MAX_SESSION_ID_LEN]
     try:
         if event == "SessionEnd":
             remove_session_state(session_name)
@@ -37,14 +53,17 @@ def main() -> int:
             return 0
         record = {
             "state": state,
-            "session_id": payload.get("session_id", ""),
+            "session_id": session_id,
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "event": event,
         }
         path = state_file_path(session_name)
-        state_dir().mkdir(parents=True, exist_ok=True)
+        sdir = state_dir()
+        sdir.mkdir(parents=True, exist_ok=True)
+        if sdir.is_symlink() or path.is_symlink():
+            return 0
         fd, tmp = tempfile.mkstemp(
-            dir=state_dir(),
+            dir=sdir,
             prefix=f".{session_name}.",
             suffix=".json.tmp",
         )

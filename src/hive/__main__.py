@@ -78,7 +78,13 @@ def main() -> None:
         DASHBOARD_LOG.parent.mkdir(parents=True, exist_ok=True)
         # Textual writes the TUI to sys.__stderr__; reassign sys.stderr so our
         # logging/tracebacks land in the file without hijacking Textual's output.
-        sys.stderr = open(DASHBOARD_LOG, "a", buffering=1)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            log_fd = os.open(DASHBOARD_LOG, flags, 0o600)
+        except OSError:
+            log_fd = None
+        if log_fd is not None:
+            sys.stderr = os.fdopen(log_fd, "a", buffering=1)
         from hive.app import HiveApp
         app = HiveApp()
         app.run()

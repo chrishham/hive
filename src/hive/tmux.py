@@ -62,9 +62,13 @@ class TmuxClient:
         )
         return result.stdout if result.returncode == 0 else ""
 
-    def capture_pane_scrollback(self, window_index: int) -> str:
+    def capture_pane_scrollback(self, window_index: int, lines: int = 1000) -> str:
         result = self._run(
-            ["tmux", "capture-pane", "-t", f"{self.session_name}:{window_index}", "-p", "-S", "-"],
+            [
+                "tmux", "capture-pane",
+                "-t", f"{self.session_name}:{window_index}",
+                "-p", "-S", f"-{lines}",
+            ],
             text=True,
         )
         return result.stdout if result.returncode == 0 else ""

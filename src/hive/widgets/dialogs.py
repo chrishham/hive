@@ -164,9 +164,23 @@ class SessionOptionsScreen(ModalScreen[dict | None]):
             return
         idx = lv.index
         session_id = item.name
+        if "/" in session_id or "\\" in session_id or session_id in {".", ".."}:
+            return
         encoded = self.project_path.replace("/", "-")
-        jsonl_path = CLAUDE_PROJECTS_DIR / encoded / f"{session_id}.jsonl"
-        if jsonl_path.exists():
+        project_dir = CLAUDE_PROJECTS_DIR / encoded
+        if project_dir.is_symlink() or not project_dir.is_dir():
+            return
+        try:
+            resolved_dir = project_dir.resolve(strict=True)
+            base = CLAUDE_PROJECTS_DIR.resolve()
+        except OSError:
+            return
+        if not resolved_dir.is_relative_to(base):
+            return
+        jsonl_path = project_dir / f"{session_id}.jsonl"
+        if jsonl_path.is_symlink():
+            return
+        if jsonl_path.is_file():
             jsonl_path.unlink()
         item.remove()
         self.resumable = [s for s in self.resumable if s["id"] != session_id]

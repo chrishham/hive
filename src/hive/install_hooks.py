@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -47,38 +49,47 @@ def install_hooks() -> bool:
     path = settings_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
+        lock_path = path.parent / ".hive-settings.lock"
+        lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            if path.exists():
+                try:
+                    settings = json.loads(path.read_text())
+                except json.JSONDecodeError:
+                    return False
+                if not isinstance(settings, dict):
+                    return False
+            else:
+                settings = {}
+
+            existing_hooks = settings.get("hooks")
+            if not isinstance(existing_hooks, dict):
+                existing_hooks = {}
+                settings["hooks"] = existing_hooks
+
+            for event in HOOK_EVENTS:
+                entries = existing_hooks.get(event)
+                if not isinstance(entries, list):
+                    entries = []
+                    existing_hooks[event] = entries
+                already = any(
+                    isinstance(h, dict) and h.get("command") == HOOK_COMMAND
+                    for entry in entries if isinstance(entry, dict)
+                    for h in entry.get("hooks", [])
+                )
+                if not already:
+                    entries.append({
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": HOOK_COMMAND}],
+                    })
+
+            atomic_write_text(path, json.dumps(settings, indent=2))
+            return True
+        finally:
             try:
-                settings = json.loads(path.read_text())
-            except json.JSONDecodeError:
-                return False
-            if not isinstance(settings, dict):
-                return False
-        else:
-            settings = {}
-
-        existing_hooks = settings.get("hooks")
-        if not isinstance(existing_hooks, dict):
-            existing_hooks = {}
-            settings["hooks"] = existing_hooks
-
-        for event in HOOK_EVENTS:
-            entries = existing_hooks.get(event)
-            if not isinstance(entries, list):
-                entries = []
-                existing_hooks[event] = entries
-            already = any(
-                isinstance(h, dict) and h.get("command") == HOOK_COMMAND
-                for entry in entries if isinstance(entry, dict)
-                for h in entry.get("hooks", [])
-            )
-            if not already:
-                entries.append({
-                    "matcher": "",
-                    "hooks": [{"type": "command", "command": HOOK_COMMAND}],
-                })
-
-        atomic_write_text(path, json.dumps(settings, indent=2))
-        return True
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_fd)
     except OSError:
         return False
