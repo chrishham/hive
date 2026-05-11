@@ -203,7 +203,9 @@ class HiveApp(App):
 
     def _after_startup(self) -> None:
         if not hook_installed():
-            self._set_info_banner("Hooks not installed. Run 'hive install-hooks' to enable state detection.")
+            from hive.install_hooks import install_hooks
+            if not install_hooks():
+                self._set_info_banner("Could not auto-install hooks. Run 'hive install-hooks' manually.")
         self._starting_up = False
         self.poll_sessions()
 

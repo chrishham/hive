@@ -48,6 +48,12 @@ The hooks are installed automatically into `~/.claude/settings.json` on startup.
 hive install-hooks
 ```
 
+To remove all hive hooks (e.g. before uninstalling):
+
+```bash
+hive uninstall-hooks
+```
+
 The hook is idempotent and harmless for non-hive Claude Code sessions: it only writes state when the launching tmux window has `HIVE_SESSION=<name>` set.
 
 If hooks are unavailable (e.g. session launched outside hive), hive falls back to scraping the pane text.

@@ -143,6 +143,22 @@ class TestAtomicWriteTextSymlinkSafety:
         ]
         assert leftovers == []
 
+    def test_follow_symlinks_writes_to_real_target(self, tmp_path):
+        link = tmp_path / "settings.json"
+        real_dir = tmp_path / "dotfiles"
+        real_dir.mkdir()
+        real = real_dir / "settings.json"
+        real.write_text("old")
+        link.symlink_to(real)
+
+        atomic_write_text(link, "new", follow_symlinks=True)
+
+        assert real.read_text() == "new"
+        assert link.is_symlink()
+        assert link.resolve() == real.resolve()
+        leftovers = [p.name for p in real_dir.iterdir() if p.name != "settings.json"]
+        assert leftovers == []
+
 
 class TestEscapeTmuxFormat:
     def test_doubles_hash(self):

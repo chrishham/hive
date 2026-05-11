@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -68,6 +69,14 @@ def main() -> None:
         print(f"Could not install hooks (corrupt {settings_path()}?)")
         sys.exit(1)
 
+    if command == "uninstall-hooks":
+        from hive.install_hooks import uninstall_hooks, settings_path
+        if uninstall_hooks():
+            print(f"Removed hive hooks from {settings_path()}")
+            return
+        print(f"Could not remove hooks (corrupt {settings_path()}?)")
+        sys.exit(1)
+
     if command == "new" and len(args) >= 2:
         path = os.path.abspath(args[1])
         if not os.path.isdir(path):
@@ -94,7 +103,7 @@ def main() -> None:
 
     if command and command != "":
         print(f"Unknown command: {command}")
-        print("Usage: hive [attach|list|new <path>|install-hooks]")
+        print("Usage: hive [attach|list|new <path>|install-hooks|uninstall-hooks]")
         sys.exit(1)
 
     if os.environ.get("TMUX"):
@@ -114,9 +123,15 @@ def main() -> None:
         app.run()
     else:
         if not tmux.session_exists():
-            tmux.create_session(window_name="dashboard", command="uv run python -m hive")
+            tmux.create_session(window_name="dashboard", command=_self_invoke_command())
             tmux.set_window_option(0, "remain-on-exit", "on")
         tmux.attach()
+
+
+def _self_invoke_command() -> str:
+    if shutil.which("hive"):
+        return "hive"
+    return f"{sys.executable} -m hive"
 
 
 def _ensure_session(tmux: TmuxClient) -> None:

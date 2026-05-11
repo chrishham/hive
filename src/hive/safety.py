@@ -72,7 +72,13 @@ def _refuse_symlink_in_existing_chain(parent: Path) -> None:
             raise OSError(f"refusing to traverse symlink: {cur}")
 
 
-def atomic_write_text(path: Path, content: str) -> None:
+def atomic_write_text(path: Path, content: str, *, follow_symlinks: bool = False) -> None:
+    if follow_symlinks:
+        # Resolve once up-front so the atomic write lands on the real target
+        # (e.g. dotfiles-managed settings symlinked into ~/.claude). The
+        # remaining symlink protections still apply to the resolved parent
+        # chain and the resolved destination.
+        path = Path(os.path.realpath(path))
     parent = path.parent
     _refuse_symlink_in_existing_chain(parent)
     parent.mkdir(parents=True, exist_ok=True)
