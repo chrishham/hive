@@ -33,7 +33,7 @@ class SessionData:
     context_str: str | None = None
     context_pct: int | None = None
     urls: list[tuple[str, bool]] = field(default_factory=list)
-    preview_text: str = ""
+    synopsis: str = ""
     waiting_since: str | None = None
 
     @property
