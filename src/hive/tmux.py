@@ -77,7 +77,7 @@ class TmuxClient:
         env: dict[str, str] | None = None,
     ) -> int:
         args = [
-            "tmux", "new-window", "-t", self.session_name,
+            "tmux", "new-window", "-t", f"{self.session_name}:",
             "-n", name,
             "-c", cwd,
         ]
