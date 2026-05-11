@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
+
+from hive.safety import TmuxError
 
 
 class TmuxClient:
@@ -8,7 +11,7 @@ class TmuxClient:
         self.session_name = session_name
 
     def _run(self, args: list[str], text: bool = False) -> subprocess.CompletedProcess:
-        return subprocess.run(args, capture_output=True, text=text) if text else subprocess.run(args, capture_output=True)
+        return subprocess.run(args, capture_output=True, text=text)
 
     def session_exists(self) -> bool:
         result = self._run(["tmux", "has-session", "-t", self.session_name])
@@ -25,7 +28,10 @@ class TmuxClient:
 
     def list_windows(self) -> list[dict]:
         result = self._run(
-            ["tmux", "list-windows", "-t", self.session_name, "-F", "#{window_index}:#{window_name}:#{pane_pid}"],
+            [
+                "tmux", "list-windows", "-t", self.session_name,
+                "-F", "#{window_index}\t#{window_name}\t#{pane_pid}",
+            ],
             text=True,
         )
         if result.returncode != 0:
@@ -34,11 +40,18 @@ class TmuxClient:
         for line in result.stdout.strip().split("\n"):
             if not line:
                 continue
-            parts = line.split(":")
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            try:
+                idx = int(parts[0])
+                pid = int(parts[2])
+            except ValueError:
+                continue
             windows.append({
-                "index": int(parts[0]),
+                "index": idx,
                 "name": parts[1],
-                "active": int(parts[2]) > 0,
+                "alive": pid > 0,
             })
         return windows
 
@@ -60,7 +73,7 @@ class TmuxClient:
         self,
         name: str,
         cwd: str,
-        command: str,
+        command_args: list[str],
         env: dict[str, str] | None = None,
     ) -> int:
         args = [
@@ -71,9 +84,17 @@ class TmuxClient:
         if env:
             for k, v in env.items():
                 args.extend(["-e", f"{k}={v}"])
-        args.extend(["-P", "-F", "#{window_index}", command])
+        args.extend(["-P", "-F", "#{window_index}", shlex.join(command_args)])
         result = self._run(args, text=True)
-        return int(result.stdout.strip())
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip() if hasattr(result, "stderr") else ""
+            raise TmuxError(f"tmux new-window failed (rc={result.returncode}): {stderr}")
+        try:
+            return int(result.stdout.strip())
+        except ValueError as exc:
+            raise TmuxError(
+                f"tmux new-window returned non-numeric output: {result.stdout!r}"
+            ) from exc
 
     def kill_window(self, window_index: int) -> None:
         self._run(["tmux", "kill-window", "-t", f"{self.session_name}:{window_index}"])

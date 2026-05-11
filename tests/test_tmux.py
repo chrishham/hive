@@ -1,7 +1,9 @@
 from unittest.mock import patch, MagicMock
 import subprocess
+import pytest
 
 from hive.tmux import TmuxClient
+from hive.safety import TmuxError
 
 
 class TestTmuxClient:
@@ -15,6 +17,7 @@ class TestTmuxClient:
         mock_run.assert_called_once_with(
             ["tmux", "has-session", "-t", "test-hive"],
             capture_output=True,
+            text=False,
         )
 
     @patch("hive.tmux.subprocess.run")
@@ -30,24 +33,28 @@ class TestTmuxClient:
         mock_run.assert_any_call(
             ["tmux", "new-session", "-d", "-s", "test-hive", "-x", "200", "-y", "50"],
             capture_output=True,
+            text=False,
         )
         mock_run.assert_any_call(
             ["tmux", "set-option", "-t", "test-hive", "mouse", "on"],
             capture_output=True,
+            text=False,
         )
 
     @patch("hive.tmux.subprocess.run")
-    def test_list_windows(self, mock_run):
+    def test_list_windows_tab_delimited(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="0:dashboard:0\n1:my-session:1\n2:other:1\n",
+            stdout="0\tdashboard\t0\n1\tmy:session\t1234\n",
         )
         windows = self.tmux.list_windows()
         assert windows == [
-            {"index": 0, "name": "dashboard", "active": False},
-            {"index": 1, "name": "my-session", "active": True},
-            {"index": 2, "name": "other", "active": True},
+            {"index": 0, "name": "dashboard", "alive": False},
+            {"index": 1, "name": "my:session", "alive": True},
         ]
+        # Assert format string uses tab separator
+        called_args = mock_run.call_args.args[0]
+        assert "#{window_index}\t#{window_name}\t#{pane_pid}" in called_args
 
     @patch("hive.tmux.subprocess.run")
     def test_capture_pane(self, mock_run):
@@ -75,10 +82,28 @@ class TestTmuxClient:
         )
 
     @patch("hive.tmux.subprocess.run")
-    def test_new_window(self, mock_run):
+    def test_new_window_with_command_args_list(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="3\n")
-        idx = self.tmux.new_window("my-window", "/tmp/proj", "claude --name my-window")
+        idx = self.tmux.new_window(
+            "my-window", "/tmp/proj",
+            ["claude", "--name", "my window; rm -rf /"],
+        )
         assert idx == 3
+        called = mock_run.call_args.args[0]
+        # The command appears as a single shlex-joined string at the end.
+        assert called[-1] == "claude --name 'my window; rm -rf /'"
+
+    @patch("hive.tmux.subprocess.run")
+    def test_new_window_raises_tmux_error_on_nonzero(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="boom")
+        with pytest.raises(TmuxError, match="boom"):
+            self.tmux.new_window("w", "/tmp", ["claude"])
+
+    @patch("hive.tmux.subprocess.run")
+    def test_new_window_raises_tmux_error_on_non_numeric(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="not-a-number\n", stderr="")
+        with pytest.raises(TmuxError, match="non-numeric"):
+            self.tmux.new_window("w", "/tmp", ["claude"])
 
     @patch("hive.tmux.subprocess.run")
     def test_kill_window(self, mock_run):
@@ -87,6 +112,7 @@ class TestTmuxClient:
         mock_run.assert_called_once_with(
             ["tmux", "kill-window", "-t", "test-hive:2"],
             capture_output=True,
+            text=False,
         )
 
     @patch("hive.tmux.subprocess.run")
@@ -96,6 +122,7 @@ class TestTmuxClient:
         mock_run.assert_called_once_with(
             ["tmux", "select-window", "-t", "test-hive:3"],
             capture_output=True,
+            text=False,
         )
 
     @patch("hive.tmux.subprocess.run")
@@ -115,6 +142,7 @@ class TestTmuxClient:
         mock_run.assert_called_once_with(
             ["tmux", "set-window-option", "-t", "test-hive:0", "remain-on-exit", "on"],
             capture_output=True,
+            text=False,
         )
 
     @patch("hive.tmux.subprocess.run")
@@ -125,10 +153,12 @@ class TestTmuxClient:
         mock_run.assert_any_call(
             ["tmux", "set-option", "-t", "test-hive", "status-left-length", "100"],
             capture_output=True,
+            text=False,
         )
         mock_run.assert_any_call(
             ["tmux", "set-option", "-t", "test-hive", "status-left", "hive: 2 sessions | ● 1 waiting"],
             capture_output=True,
+            text=False,
         )
 
 
@@ -138,12 +168,12 @@ def test_new_window_with_env(monkeypatch):
 
     def fake_run(self, args, text=False):
         captured["args"] = args
-        class R: returncode = 0; stdout = "5"
+        class R: returncode = 0; stdout = "5"; stderr = ""
         return R()
 
     monkeypatch.setattr(TmuxClient, "_run", fake_run)
     client = TmuxClient("hive")
-    idx = client.new_window("foo", "/tmp", "claude", env={"HIVE_SESSION": "foo"})
+    idx = client.new_window("foo", "/tmp", ["claude"], env={"HIVE_SESSION": "foo"})
     assert idx == 5
     assert "-e" in captured["args"]
     e_idx = captured["args"].index("-e")
