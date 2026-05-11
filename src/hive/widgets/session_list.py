@@ -34,6 +34,7 @@ class SessionData:
     context_pct: int | None = None
     urls: list[tuple[str, bool]] = field(default_factory=list)
     preview_text: str = ""
+    waiting_since: str | None = None
 
     @property
     def status_icon(self) -> str:
@@ -66,7 +67,7 @@ class SessionListItem(ListItem):
 
     def refresh_content(self) -> None:
         d = self.data
-        header = f"[{d.status_color}]{d.status_icon}[/] {d.name}"
+        header = f"[{d.status_color}]{d.status_icon}[/] [bold cyan]{d.name}[/]"
         state_label = d.state.value.upper()
         self.query_one("#sl-header", Label).update(f"{header}  [{d.status_color}]{state_label}[/]")
         self.query_one("#sl-project", Label).update(f"  {d.project_path}")

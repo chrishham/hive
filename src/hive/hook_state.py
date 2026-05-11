@@ -19,20 +19,31 @@ def state_file_path(name: str) -> Path:
 
 
 def read_session_state(name: str) -> SessionState | None:
+    state, _ = read_session_state_with_meta(name)
+    return state
+
+
+def read_session_state_with_meta(
+    name: str,
+) -> tuple[SessionState | None, str | None]:
     try:
         path = state_file_path(name)
     except ValueError:
-        return None
+        return None, None
     if not path.exists():
-        return None
+        return None, None
     try:
         data = json.loads(path.read_text())
     except (json.JSONDecodeError, OSError):
-        return None
-    raw = data.get("state") if isinstance(data, dict) else None
-    if not isinstance(raw, str):
-        return None
-    return _STATE_VALUES.get(raw)
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    raw = data.get("state")
+    state = _STATE_VALUES.get(raw) if isinstance(raw, str) else None
+    updated_at = data.get("updated_at")
+    if not isinstance(updated_at, str):
+        updated_at = None
+    return state, updated_at
 
 
 def remove_session_state(name: str) -> None:

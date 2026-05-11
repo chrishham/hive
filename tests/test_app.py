@@ -285,6 +285,51 @@ def test_validate_clone_target_accepts_normal_repo(tmp_path):
     assert _validate_clone_target(str(tmp_path), "myrepo") == str(tmp_path / "myrepo")
 
 
+class TestSessionSortKey:
+    def _make(self, name, state, waiting_since=None):
+        return SessionData(
+            name=name, project_path="/", tmux_window=1,
+            state=state, waiting_since=waiting_since,
+        )
+
+    def test_waiting_before_working(self):
+        from hive.app import _session_sort_key
+        items = [
+            self._make("z-working", SessionState.WORKING),
+            self._make("a-waiting", SessionState.WAITING, "2026-05-11T10:00:00+00:00"),
+        ]
+        sorted_items = sorted(items, key=_session_sort_key)
+        assert [s.name for s in sorted_items] == ["a-waiting", "z-working"]
+
+    def test_waiting_oldest_first(self):
+        from hive.app import _session_sort_key
+        items = [
+            self._make("recent", SessionState.WAITING, "2026-05-11T12:00:00+00:00"),
+            self._make("oldest", SessionState.WAITING, "2026-05-11T08:00:00+00:00"),
+            self._make("middle", SessionState.WAITING, "2026-05-11T10:00:00+00:00"),
+        ]
+        sorted_items = sorted(items, key=_session_sort_key)
+        assert [s.name for s in sorted_items] == ["oldest", "middle", "recent"]
+
+    def test_waiting_without_timestamp_sorts_last_among_waiting(self):
+        from hive.app import _session_sort_key
+        items = [
+            self._make("no-ts", SessionState.WAITING, None),
+            self._make("with-ts", SessionState.WAITING, "2026-05-11T10:00:00+00:00"),
+        ]
+        sorted_items = sorted(items, key=_session_sort_key)
+        assert [s.name for s in sorted_items] == ["with-ts", "no-ts"]
+
+    def test_working_sessions_sort_by_name(self):
+        from hive.app import _session_sort_key
+        items = [
+            self._make("zebra", SessionState.WORKING),
+            self._make("alpha", SessionState.WORKING),
+        ]
+        sorted_items = sorted(items, key=_session_sort_key)
+        assert [s.name for s in sorted_items] == ["alpha", "zebra"]
+
+
 class TestValidateCloneUrl:
     @pytest.mark.parametrize("url", [
         "https://github.com/user/repo.git",

@@ -18,7 +18,7 @@ from textual.widgets import Label
 
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
-from hive.hook_state import read_session_state, remove_session_state
+from hive.hook_state import read_session_state_with_meta, remove_session_state
 from hive.install_hooks import hook_installed
 from hive.safety import (
     InvalidSessionName,
@@ -70,6 +70,14 @@ def _validate_clone_url(url: str) -> str:
     if _SCP_URL_RE.match(stripped):
         return stripped
     raise ValueError(f"unsupported url: {stripped!r}")
+
+
+def _session_sort_key(s) -> tuple:
+    is_waiting = s.state == SessionState.WAITING
+    # Waiting sessions first; within waiting, oldest updated_at first.
+    # Empty/missing waiting_since sorts last among waiting sessions.
+    waiting_since = s.waiting_since or "\uffff"
+    return (not is_waiting, waiting_since if is_waiting else "", s.name)
 
 
 _CRED_URL_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@")
@@ -247,8 +255,9 @@ class HiveApp(App):
             current_names.add(name)
 
             pane_text = self.tmux.capture_pane(win["index"])
-            hook_state = read_session_state(name)
+            hook_state, hook_updated_at = read_session_state_with_meta(name)
             state = hook_state if hook_state is not None else detect_state(pane_text)
+            waiting_since = hook_updated_at if state == SessionState.WAITING else None
 
             model, context_str = detect_model(pane_text)
 
@@ -276,6 +285,7 @@ class HiveApp(App):
                 context_pct=context_pct,
                 urls=urls,
                 preview_text=pane_text,
+                waiting_since=waiting_since,
             )
             self.session_data_map[name] = data
 
@@ -303,10 +313,7 @@ class HiveApp(App):
 
     def _rebuild_list(self, list_view: SessionListView) -> None:
         ready = [s for s in self.session_data_map.values() if s.state != SessionState.BOOTSTRAPPING]
-        sorted_sessions = sorted(
-            ready,
-            key=lambda s: (s.state != SessionState.WAITING, s.name),
-        )
+        sorted_sessions = sorted(ready, key=_session_sort_key)
         new_names = [s.name for s in sorted_sessions]
 
         existing: dict[str, SessionListItem] = {}
