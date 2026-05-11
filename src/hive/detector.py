@@ -24,6 +24,8 @@ PROMPT_PATTERNS = [
 
 WORKING_PATTERNS = [
     re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]"),
+    re.compile(r"\(\d+s\s*·"),
+    re.compile(r"esc to interrupt"),
     re.compile(r"Thinking\.\.\."),
     re.compile(r"Running:"),
     re.compile(r"Reading:"),

@@ -22,6 +22,29 @@ class TestDetectState:
         pane = "Claude Code v2.1\nsome output\n  Running: pytest tests/ -v\n"
         assert detect_state(pane) == SessionState.WORKING
 
+    def test_working_v2_status_line_with_visible_prompt(self):
+        pane = (
+            "Claude Code v2.1.114\n"
+            "Opus 4.7\n\n"
+            "❯ investigate the production alerts\n\n"
+            "● Calling proxy-mcp 3 times…\n\n"
+            "✢ Precipitating… (16s · ↓ 76 tokens · thinking with high effort)\n\n"
+            "──── free-002 ──\n"
+            "❯ \n"
+            "───────────────\n"
+            "  ⏵⏵ bypass permissions on (shift+tab to cycle)\n"
+        )
+        assert detect_state(pane) == SessionState.WORKING
+
+    def test_working_v2_esc_to_interrupt(self):
+        pane = (
+            "Claude Code v2.1\nsome output\n"
+            "✻ Cogitating… (4s · ↑ 1.2k tokens · esc to interrupt)\n"
+            "❯ \n"
+            "  ⏵⏵ bypass permissions on (shift+tab to cycle)\n"
+        )
+        assert detect_state(pane) == SessionState.WORKING
+
     def test_empty_pane(self):
         pane = ""
         assert detect_state(pane) == SessionState.BOOTSTRAPPING
