@@ -13,11 +13,16 @@ def state_dir() -> Path:
 
 
 def state_file_path(name: str) -> Path:
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError(f"unsafe session name: {name!r}")
     return state_dir() / f"{name}.json"
 
 
 def read_session_state(name: str) -> SessionState | None:
-    path = state_file_path(name)
+    try:
+        path = state_file_path(name)
+    except ValueError:
+        return None
     if not path.exists():
         return None
     try:
@@ -31,4 +36,7 @@ def read_session_state(name: str) -> SessionState | None:
 
 
 def remove_session_state(name: str) -> None:
-    state_file_path(name).unlink(missing_ok=True)
+    try:
+        state_file_path(name).unlink(missing_ok=True)
+    except ValueError:
+        return

@@ -53,3 +53,17 @@ def test_remove_session_state_idempotent(fake_home):
 
 def test_state_file_path_uses_home(fake_home):
     assert state_file_path("bar") == fake_home / ".claude" / "hive" / "state" / "bar.json"
+
+
+@pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", ".", ""])
+def test_state_file_path_rejects_unsafe_names(fake_home, bad):
+    with pytest.raises(ValueError):
+        state_file_path(bad)
+
+
+def test_read_session_state_unsafe_name_returns_none(fake_home):
+    assert read_session_state("../escape") is None
+
+
+def test_remove_session_state_unsafe_name_no_raise(fake_home):
+    remove_session_state("../escape")
