@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import shlex
 import sys
+from pathlib import Path
 
 from hive.config import HiveConfig
 from hive.tmux import TmuxClient
+
+DASHBOARD_LOG = Path.home() / ".claude" / "hive" / "dashboard.log"
 
 
 def main() -> None:
@@ -67,7 +71,10 @@ def main() -> None:
         app.run()
     else:
         if not tmux.session_exists():
-            tmux.create_session(window_name="dashboard", command="uv run python -m hive")
+            DASHBOARD_LOG.parent.mkdir(parents=True, exist_ok=True)
+            dashboard_cmd = f"uv run python -m hive 2>> {shlex.quote(str(DASHBOARD_LOG))}"
+            tmux.create_session(window_name="dashboard", command=dashboard_cmd)
+            tmux.set_window_option(0, "remain-on-exit", "on")
         tmux.attach()
 
 

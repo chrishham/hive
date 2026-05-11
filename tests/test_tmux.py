@@ -109,6 +109,15 @@ class TestTmuxClient:
         assert self.tmux.is_pane_alive(1) is False
 
     @patch("hive.tmux.subprocess.run")
+    def test_set_window_option(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        self.tmux.set_window_option(0, "remain-on-exit", "on")
+        mock_run.assert_called_once_with(
+            ["tmux", "set-window-option", "-t", "test-hive:0", "remain-on-exit", "on"],
+            capture_output=True,
+        )
+
+    @patch("hive.tmux.subprocess.run")
     def test_set_status_bar(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         self.tmux.set_status_bar("hive: 2 sessions | ● 1 waiting")

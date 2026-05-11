@@ -95,6 +95,13 @@ class TmuxClient:
         self._run(["tmux", "set-option", "-t", self.session_name, "status-left-length", "100"])
         self._run(["tmux", "set-option", "-t", self.session_name, "status-left", text])
 
+    def set_window_option(self, window_index: int, option: str, value: str) -> None:
+        self._run([
+            "tmux", "set-window-option",
+            "-t", f"{self.session_name}:{window_index}",
+            option, value,
+        ])
+
     def rename_window(self, window_index: int, new_name: str) -> None:
         self._run(["tmux", "rename-window", "-t", f"{self.session_name}:{window_index}", new_name])
 
