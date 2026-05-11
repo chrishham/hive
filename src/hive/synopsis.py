@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+try:
+    import anthropic
+except ImportError:
+    anthropic = None  # type: ignore[assignment]
 
 
 def _claude_projects_dir() -> Path:
@@ -70,3 +76,45 @@ def _extract_text(content) -> str:
                 if isinstance(text, str) and text.strip():
                     return text.strip()
     return ""
+
+
+def build_client():
+    if anthropic is None:
+        return None, None
+
+    if os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
+        project_id = os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID", "")
+        region = os.environ.get("CLOUD_ML_REGION", "us-east5")
+        client = anthropic.AnthropicVertex(project_id=project_id, region=region)
+        return client, "claude-haiku-4-5@20251001"
+
+    if os.environ.get("ANTHROPIC_FOUNDRY_API_KEY"):
+        client = anthropic.AnthropicFoundry()
+        return client, "claude-haiku-4-5"
+
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        client = anthropic.Anthropic()
+        return client, "claude-haiku-4-5-20251001"
+
+    return None, None
+
+
+_SYSTEM_PROMPT = (
+    "Summarize this Claude Code session in 2-3 concise lines. "
+    "State what the session is about, what has been accomplished, "
+    "and what state it's in (e.g., waiting for input, actively working, debugging). "
+    "Be specific about the actual work, not generic."
+)
+
+
+def generate_synopsis_text(client, model: str, messages: list[dict[str, str]]) -> str:
+    if not messages:
+        return ""
+    conversation = "\n".join(f"[{m['role']}]: {m['text']}" for m in messages)
+    response = client.messages.create(
+        model=model,
+        max_tokens=256,
+        system=_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": conversation}],
+    )
+    return response.content[0].text.strip()
