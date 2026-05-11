@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +11,8 @@ try:
     import anthropic
 except ImportError:
     anthropic = None  # type: ignore[assignment]
+
+logger = logging.getLogger("hive.synopsis")
 
 
 def _claude_projects_dir() -> Path:
@@ -167,3 +171,81 @@ def remove_cached_synopsis(session_name: str) -> None:
         cache_path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+_client_cache: tuple | None = None
+
+
+def _get_client():
+    global _client_cache
+    if _client_cache is None:
+        _client_cache = build_client()
+    return _client_cache
+
+
+def _jsonl_path(project_path: str, session_id: str) -> Path:
+    encoded = project_path.replace("/", "-")
+    return Path.home() / ".claude" / "projects" / encoded / f"{session_id}.jsonl"
+
+
+def _fallback_synopsis(project_path: str, session_id: str) -> str:
+    messages = extract_conversation(project_path, session_id, max_chars=200)
+    if not messages:
+        return "(no conversation yet)"
+    return messages[0]["text"][:200]
+
+
+async def get_synopsis(
+    session_name: str,
+    project_path: str,
+    session_id: str,
+) -> str:
+    jpath = _jsonl_path(project_path, session_id)
+    if not jpath.is_file():
+        return "(no conversation yet)"
+
+    try:
+        stat = jpath.stat()
+    except OSError:
+        return "(no conversation yet)"
+
+    mtime = stat.st_mtime
+    size = stat.st_size
+
+    cached = load_cached_synopsis(session_name, mtime, size)
+    if cached is not None:
+        return cached
+
+    client, model = _get_client()
+    if client is None:
+        return _fallback_synopsis(project_path, session_id)
+
+    messages = extract_conversation(project_path, session_id)
+    if not messages:
+        return "(no conversation yet)"
+
+    try:
+        synopsis = await asyncio.to_thread(
+            generate_synopsis_text, client, model, messages
+        )
+    except Exception:
+        logger.warning("synopsis generation failed for %s", session_name, exc_info=True)
+        old_cached = _load_any_cached_synopsis(session_name)
+        if old_cached is not None:
+            return old_cached
+        return _fallback_synopsis(project_path, session_id)
+
+    save_cached_synopsis(session_name, session_id, mtime, size, synopsis)
+    return synopsis
+
+
+def _load_any_cached_synopsis(session_name: str) -> str | None:
+    cache_path = _synopsis_cache_dir() / f"{session_name}.json"
+    if not cache_path.is_file():
+        return None
+    try:
+        data = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    synopsis = data.get("synopsis") if isinstance(data, dict) else None
+    return synopsis if isinstance(synopsis, str) else None

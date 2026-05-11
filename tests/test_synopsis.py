@@ -1,3 +1,4 @@
+import asyncio
 import json
 import pytest
 from unittest.mock import patch, MagicMock
@@ -204,3 +205,74 @@ def test_remove_cached_synopsis(fake_home, cache_dir):
 def test_remove_cached_synopsis_idempotent(fake_home, cache_dir):
     from hive.synopsis import remove_cached_synopsis
     remove_cached_synopsis("nonexistent")  # must not raise
+
+
+def test_get_synopsis_returns_cached(fake_home, cache_dir, monkeypatch):
+    from hive.synopsis import get_synopsis
+    monkeypatch.setattr("hive.synopsis._client_cache", None)
+    jsonl_path = _make_jsonl(fake_home, "/home/user/proj", "sess-1", [
+        ("user", "Hello"),
+        ("assistant", "Hi"),
+    ])
+    mtime = jsonl_path.stat().st_mtime
+    size = jsonl_path.stat().st_size
+    save_cached_synopsis("my-session", "sess-1", mtime, size, "Cached synopsis.")
+
+    result = asyncio.run(get_synopsis("my-session", "/home/user/proj", "sess-1"))
+    assert result == "Cached synopsis."
+
+
+def test_get_synopsis_generates_when_no_cache(fake_home, cache_dir, monkeypatch):
+    from hive.synopsis import get_synopsis
+    monkeypatch.setattr("hive.synopsis._client_cache", None)
+    _make_jsonl(fake_home, "/home/user/proj", "sess-1", [
+        ("user", "Fix the bug"),
+        ("assistant", "On it."),
+    ])
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="Fixing a bug in the login flow.")]
+    mock_client.messages.create.return_value = mock_response
+
+    with patch("hive.synopsis.build_client", return_value=(mock_client, "haiku")):
+        result = asyncio.run(get_synopsis("my-session", "/home/user/proj", "sess-1"))
+    assert result == "Fixing a bug in the login flow."
+
+
+def test_get_synopsis_no_credentials_fallback(fake_home, cache_dir, monkeypatch):
+    from hive.synopsis import get_synopsis
+    monkeypatch.setattr("hive.synopsis._client_cache", None)
+    _make_jsonl(fake_home, "/home/user/proj", "sess-1", [
+        ("user", "Help me refactor the database layer"),
+    ])
+    with patch("hive.synopsis.build_client", return_value=(None, None)):
+        result = asyncio.run(get_synopsis("my-session", "/home/user/proj", "sess-1"))
+    assert "refactor the database layer" in result
+
+
+def test_get_synopsis_no_jsonl(fake_home, cache_dir, monkeypatch):
+    from hive.synopsis import get_synopsis
+    monkeypatch.setattr("hive.synopsis._client_cache", None)
+    result = asyncio.run(get_synopsis("my-session", "/nonexistent", "no-sess"))
+    assert result == "(no conversation yet)"
+
+
+def test_get_synopsis_api_error_keeps_old_cache(fake_home, cache_dir, monkeypatch):
+    from hive.synopsis import get_synopsis
+    monkeypatch.setattr("hive.synopsis._client_cache", None)
+    jsonl_path = _make_jsonl(fake_home, "/home/user/proj", "sess-1", [
+        ("user", "Hello"),
+    ])
+    mtime1 = jsonl_path.stat().st_mtime
+    size1 = jsonl_path.stat().st_size
+    save_cached_synopsis("my-session", "sess-1", mtime1, size1, "Old cached synopsis.")
+
+    with open(jsonl_path, "a") as f:
+        f.write("\n" + json.dumps({"type": "user", "message": {"content": [{"type": "text", "text": "new msg"}]}}))
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = Exception("API error")
+
+    with patch("hive.synopsis.build_client", return_value=(mock_client, "haiku")):
+        result = asyncio.run(get_synopsis("my-session", "/home/user/proj", "sess-1"))
+    assert result == "Old cached synopsis."
