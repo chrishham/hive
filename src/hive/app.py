@@ -14,7 +14,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
-from textual.widgets import Label
+from textual.widgets import Label, Static
 
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
@@ -23,7 +23,6 @@ from hive.install_hooks import hook_installed
 from hive.safety import (
     InvalidSessionName,
     TmuxError,
-    escape_tmux_format,
     sanitize_session_name,
     validate_session_name,
 )
@@ -39,6 +38,40 @@ from hive.widgets.dialogs import (
 )
 from hive.widgets.preview import PreviewPane
 from hive.widgets.session_list import SessionData, SessionListItem, SessionListView
+
+
+_SPLASH_BASE = (
+    "\n"
+    "[#DAA520]         __    __    __    __    __[/]\n"
+    "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
+    "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
+    "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
+    "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
+    "\n"
+    "[bold #FFD700]        ██╗  ██╗██╗██╗   ██╗███████╗[/]\n"
+    "[bold #FFD700]        ██║  ██║██║██║   ██║██╔════╝[/]\n"
+    "[bold #FFD700]        ███████║██║██║   ██║█████╗[/]\n"
+    "[bold #FFD700]        ██╔══██║██║╚██╗ ██╔╝██╔══╝[/]\n"
+    "[bold #FFD700]        ██║  ██║██║ ╚████╔╝ ███████╗[/]\n"
+    "[bold #FFD700]        ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚══════╝[/]\n"
+    "\n"
+    "[#B8860B]         Claude Code Orchestrator[/]\n"
+    "\n"
+    "[#DAA520]         __    __    __    __    __[/]\n"
+    "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
+    "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
+    "\n"
+)
+
+_DOT_FRAMES = (".    ", ". .  ", ". . .", " . . ", "  . .", "   . ")
+
+
+def _build_splash_text(frame: int) -> str:
+    dots = _DOT_FRAMES[frame % len(_DOT_FRAMES)]
+    return _SPLASH_BASE + f"[dim]              warming up  {dots}[/]"
+
+
+SPLASH_ART = _build_splash_text(0)
 
 
 def _validate_clone_target(clone_path: str, repo_name: str) -> str:
@@ -112,18 +145,24 @@ class HiveApp(App):
         self.session_data_map: dict[str, SessionData] = {}
         self._last_attached: str | None = None
         self._url_cache: dict[int, tuple[int, list[tuple[str, bool]]]] = {}
+        self._prev_active_window: int | None = None
+        self._starting_up: bool = True
+        self._orphan_strikes: dict[str, int] = {}
 
     def compose(self) -> ComposeResult:
-        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
-        total = len(self.session_data_map)
-        header_text = f"hive — Claude Code Orchestrator    {total} sessions"
-        if waiting:
-            header_text += f" ({waiting}●)"
-        yield Label(header_text, id="header")
+        will_restore = bool(self.state.sessions)
+        yield Label(self._build_header_text(), id="header")
         yield Label("", id="info-banner", classes="banner banner-info")
         yield Label("", id="warning-banner", classes="banner banner-warn")
         yield Label("", id="error-banner", classes="banner banner-error")
-        with Horizontal(id="main"):
+        # Splash is mounted visible iff we have sessions to restore. Main is
+        # hidden in that same case so it doesn't fight for layout space.
+        yield Static(
+            SPLASH_ART,
+            id="splash",
+            classes="" if will_restore else "hidden",
+        )
+        with Horizontal(id="main", classes="hidden" if will_restore else ""):
             yield SessionListView(id="session-panel", initial_index=0)
             yield PreviewPane("(no session selected)", id="preview-panel")
         yield Label(
@@ -132,11 +171,106 @@ class HiveApp(App):
         )
 
     async def on_mount(self) -> None:
+        # Return quickly so Textual finishes its initial paint and the splash
+        # actually shows. All restore + warmup work runs in a follow-up task.
         self.query_one("#session-panel", SessionListView).focus()
+        if self.state.sessions:
+            self.run_worker(self._startup_flow(), exclusive=False)
+        else:
+            self._after_startup()
+
+    async def _startup_flow(self) -> None:
+        # Run blocking spawn off-thread so the splash keeps painting.
+        spawned = await asyncio.to_thread(self._restore_sessions)
+        shortcuts = "Ctrl-b 0:dashboard  Ctrl-b n/p:next/prev  Shift+drag:select  Ctrl+Shift+C:copy"
+        await asyncio.to_thread(self.tmux.setup_shortcut_bar, shortcuts)
+        if spawned:
+            await self._animate_warmup_until_loaded(spawned, max_wait=30.0)
+            self._show_splash(False)
+            purged = self._purge_dead_sessions(spawned)
+            if purged:
+                preview = ", ".join(purged[:3])
+                more = f" (+{len(purged) - 3} more)" if len(purged) > 3 else ""
+                self._set_info_banner(
+                    f"Removed {len(purged)} stale session(s) that could not resume: {preview}{more}"
+                )
+            else:
+                self._set_info_banner("")
+        else:
+            # Nothing actually got spawned — hide splash so dashboard appears.
+            self._show_splash(False)
+        self._after_startup()
+
+    def _after_startup(self) -> None:
         if not hook_installed():
             self._set_info_banner("Hooks not installed. Run 'hive install-hooks' to enable state detection.")
-        self._restore_sessions()
+        self._starting_up = False
         self.poll_sessions()
+
+    def _show_splash(self, visible: bool) -> None:
+        try:
+            splash = self.query_one("#splash", Static)
+            main = self.query_one("#main", Horizontal)
+        except Exception:
+            return
+        # Use Textual's display property (overrides CSS) and clear the initial
+        # .hidden class so the toggle is unambiguous.
+        splash.set_class(False, "hidden")
+        splash.display = visible
+        main.display = not visible
+        splash.refresh(layout=True)
+        main.refresh(layout=True)
+
+    async def _animate_warmup_until_loaded(
+        self, spawned: list[str], max_wait: float = 30.0
+    ) -> None:
+        """Hold the splash + animate the spinner/dots until every spawned
+        session has either loaded (state != BOOTSTRAPPING) or died. Capped at
+        max_wait so we don't hang forever if hooks aren't installed and pane
+        detection can't decide."""
+        spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        loop = asyncio.get_event_loop()
+        end = loop.time() + max_wait
+        try:
+            splash = self.query_one("#splash", Static)
+        except Exception:
+            splash = None
+
+        i = 0
+        while loop.time() < end:
+            pending = await asyncio.to_thread(self._pending_spawned, spawned)
+            if not pending:
+                break
+            if splash is not None:
+                splash.update(_build_splash_text(i))
+            char = spinner[i % len(spinner)]
+            total = len(spawned)
+            done = total - len(pending)
+            self._set_info_banner(
+                f"{char}  Warming up — {done}/{total} session(s) loaded, waiting for {len(pending)}…"
+            )
+            await asyncio.sleep(0.15)
+            i += 1
+
+    def _pending_spawned(self, spawned: list[str]) -> list[str]:
+        """Return spawned names that are still alive *and* still bootstrapping.
+        Sessions whose tmux window died are excluded — they'll be purged."""
+        windows = self.tmux.list_windows()
+        alive = {w["name"]: w["index"] for w in windows if w["index"] != 0}
+        pending: list[str] = []
+        for name in spawned:
+            idx = alive.get(name)
+            if idx is None:
+                continue  # window died — will be purged after the loop
+            hook_state, _ = read_session_state_with_meta(name)
+            if hook_state is not None and hook_state != SessionState.BOOTSTRAPPING:
+                continue
+            if hook_state is None:
+                pane_text = self.tmux.capture_pane(idx)
+                if detect_state(pane_text) != SessionState.BOOTSTRAPPING:
+                    continue
+            pending.append(name)
+        return pending
 
     def _set_error_banner(self, text: str) -> None:
         try:
@@ -170,9 +304,12 @@ class HiveApp(App):
         except Exception:
             pass
 
-    def _restore_sessions(self) -> None:
+    def _restore_sessions(self) -> list[str]:
+        """Spawn tmux windows for saved sessions. Returns the list of names
+        that were (re)spawned this call so the caller can later verify which
+        actually survived."""
         if not self.state.sessions:
-            return
+            return []
 
         renames: list[tuple[str, str]] = []
         for name in list(self.state.sessions.keys()):
@@ -199,6 +336,7 @@ class HiveApp(App):
 
         windows = self.tmux.list_windows()
         existing_names = {w["name"] for w in windows if w["index"] != 0}
+        spawned: list[str] = []
         for name, info in list(self.state.sessions.items()):
             if name in existing_names:
                 continue
@@ -214,17 +352,67 @@ class HiveApp(App):
                     "claude", "--dangerously-skip-permissions",
                     "--name", name, "--continue",
                 ]
+            # Drop any stale hook state from the previous run so the freshly
+            # spawned claude isn't reported in its old state until its own
+            # hooks fire.
+            remove_session_state(name)
             try:
                 window_idx = self.tmux.new_window(
-                    name, project_path, args, env={"HIVE_SESSION": name}
+                    name, project_path, args,
+                    env={"HIVE_SESSION": name},
+                    detached=True,
                 )
             except TmuxError as exc:
                 import sys
                 print(f"hive: failed to restore session {name!r}: {exc}", file=sys.stderr)
                 continue
             self.state.sessions[name]["tmux_window"] = window_idx
-        self.tmux.select_window(0)
+            spawned.append(name)
         self.state.save_default()
+        return spawned
+
+    def _purge_dead_sessions(self, attempted: list[str]) -> list[str]:
+        """Drop entries whose tmux window vanished shortly after spawn — i.e.,
+        claude exited because --continue could not resume the session. Keeps
+        state.json honest so we don't keep trying to revive ghosts."""
+        if not attempted:
+            return []
+        windows = self.tmux.list_windows()
+        surviving = {w["name"] for w in windows if w["index"] != 0}
+        purged: list[str] = []
+        for name in attempted:
+            if name in surviving:
+                continue
+            self.state.remove_session(name)
+            remove_session_state(name)
+            purged.append(name)
+        if purged:
+            self.state.save_default()
+        return purged
+
+    # Number of consecutive polls a state.json entry can be missing from
+    # tmux before we drop it. With the default 5s poll interval that's ~10s.
+    ORPHAN_STRIKE_THRESHOLD = 2
+
+    def _purge_orphans_in_state(self, current_names: set[str]) -> None:
+        """Drop state.json entries whose tmux window has been missing across
+        several consecutive polls. Catches sessions that die slowly (after the
+        startup warmup) or are killed outside the dashboard."""
+        dirty = False
+        for name in list(self.state.sessions.keys()):
+            if name in current_names:
+                self._orphan_strikes.pop(name, None)
+                continue
+            strikes = self._orphan_strikes.get(name, 0) + 1
+            if strikes >= self.ORPHAN_STRIKE_THRESHOLD:
+                self.state.remove_session(name)
+                remove_session_state(name)
+                self._orphan_strikes.pop(name, None)
+                dirty = True
+            else:
+                self._orphan_strikes[name] = strikes
+        if dirty:
+            self.state.save_default()
 
     async def _poll_once(self) -> None:
         try:
@@ -297,11 +485,37 @@ class HiveApp(App):
             if idx not in live_indices:
                 del self._url_cache[idx]
 
+        self._purge_orphans_in_state(current_names)
+
         self._rebuild_list(list_view)
+        self._sync_dashboard_focus(list_view, windows)
         self._ensure_highlight(list_view)
         self._update_preview(list_view, preview)
         self._update_header()
-        self._update_tmux_status()
+
+    def _sync_dashboard_focus(self, list_view: SessionListView, windows: list[dict]) -> None:
+        active_idx: int | None = None
+        last_active_name: str | None = None
+        for win in windows:
+            if win.get("active"):
+                active_idx = win["index"]
+            if win.get("last_active") and win["index"] != 0:
+                last_active_name = win["name"]
+
+        prev = self._prev_active_window
+        self._prev_active_window = active_idx
+
+        if active_idx != 0:
+            return
+        if prev is None or prev == 0:
+            return
+
+        if last_active_name is not None:
+            for i, item in enumerate(list_view.children):
+                if isinstance(item, SessionListItem) and item.data.name == last_active_name:
+                    list_view.index = i
+                    break
+        list_view.focus()
 
     def _ensure_highlight(self, list_view: SessionListView) -> None:
         children = list(list_view.children)
@@ -354,31 +568,25 @@ class HiveApp(App):
         else:
             preview.clear_content()
 
-    def _update_header(self) -> None:
-        total = len(self.session_data_map)
-        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+    def _build_header_text(self) -> str:
+        brand = "[bold yellow]🐝[/] [black on bright_yellow] H I V E [/] [yellow]⬢⬡⬢[/]"
+        title = "[bold bright_cyan]Claude Code Orchestrator[/]"
+        if self._starting_up:
+            return "  [dim]│[/]  ".join([brand, title, "[italic dim]starting up…[/]"])
         booting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.BOOTSTRAPPING)
-        header_text = f"hive — Claude Code Orchestrator    {total} sessions"
+        # Count only sessions that have actually loaded — matches what's rendered in the list
+        # (BOOTSTRAPPING sessions are filtered out of the panel by _rebuild_list).
+        ready = len(self.session_data_map) - booting
+        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
+        parts = [brand, title, f"[bold]{ready}[/] [dim]sessions[/]"]
         if waiting:
-            header_text += f" ({waiting}●)"
+            parts.append(f"[bold black on bright_yellow] {waiting} Waiting [/]")
         if booting:
-            header_text += f"  loading {booting}..."
-        self.query_one("#header", Label).update(header_text)
+            parts.append(f"[bold black on bright_blue] {booting} Loading [/]")
+        return "  [dim]│[/]  ".join(parts)
 
-    def _update_tmux_status(self) -> None:
-        total = len(self.session_data_map)
-        waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
-        booting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.BOOTSTRAPPING)
-        parts = [f"hive: {total} sessions"]
-        if booting:
-            parts.append(f"loading {booting}")
-        if waiting:
-            parts.append(f"● {waiting} waiting")
-        for s in self.session_data_map.values():
-            if s.state == SessionState.WAITING:
-                parts.append(f"{escape_tmux_format(s.name)} ●")
-        parts.append("Ctrl+B 0 → dashboard")
-        self.tmux.set_status_bar(" | ".join(parts))
+    def _update_header(self) -> None:
+        self.query_one("#header", Label).update(self._build_header_text())
 
     def on_list_view_highlighted(self, event: SessionListView.Highlighted) -> None:
         preview = self.query_one("#preview-panel", PreviewPane)

@@ -5,15 +5,26 @@ Screen {
 #header {
     dock: top;
     height: 1;
-    background: $primary-background;
+    background: $boost;
     color: $text;
-    text-style: bold;
     padding: 0 1;
 }
 
 #main {
     layout: horizontal;
     height: 1fr;
+}
+
+#splash {
+    width: 100%;
+    height: 1fr;
+    content-align: center middle;
+    color: $warning;
+    text-style: bold;
+}
+
+.hidden {
+    display: none;
 }
 
 #session-panel {

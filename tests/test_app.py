@@ -51,7 +51,7 @@ class TestHiveAppSmoke:
         async with app.run_test() as pilot:
             from textual.widgets import Label
             header = app.query_one("#header", Label)
-            assert "hive" in str(header.render()).lower()
+            assert "H I V E" in str(header.render())
             footer = app.query_one("#footer-bar", Label)
             assert "n:new" in str(footer.render())
         mock_hook_installed.assert_called_once()
@@ -129,7 +129,7 @@ async def test_restore_sanitizes_bad_existing_state(
 
     captured: dict = {}
 
-    def fake_new_window(name, cwd, command_args, env=None):
+    def fake_new_window(name, cwd, command_args, env=None, detached=False):
         captured["name"] = name
         captured["env_session"] = env["HIVE_SESSION"] if env else ""
         captured["command_args"] = command_args
@@ -239,33 +239,6 @@ async def test_refresh_success_clears_banner(
 
     await app._poll_once()
     assert cleared["flag"] is True
-
-
-@patch("hive.app.hook_installed")
-@patch("hive.app.TmuxClient")
-@patch("hive.app.HiveConfig.load_default")
-@patch("hive.app.HiveState.load_default")
-def test_status_bar_escapes_hash_in_session_name(
-    mock_state, mock_config, mock_tmux, mock_hook_installed
-):
-    mock_config.return_value = HiveConfig.defaults()
-    mock_state.return_value = HiveState()
-    tmux_instance = MagicMock()
-    captured: dict[str, str] = {}
-    tmux_instance.set_status_bar = lambda t: captured.setdefault("text", t)
-    mock_tmux.return_value = tmux_instance
-    mock_hook_installed.return_value = True
-
-    from hive.app import HiveApp
-    app = HiveApp()
-    app.session_data_map = {
-        "a#b": SessionData(
-            name="a#b", project_path="", tmux_window=1, state=SessionState.WAITING
-        ),
-    }
-    app._update_tmux_status()
-    assert "a##b ●" in captured["text"]
-    assert "a#b ●" not in captured["text"]
 
 
 def test_validate_clone_target_rejects_dotdot(tmp_path):

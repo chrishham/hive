@@ -45,16 +45,33 @@ class TestTmuxClient:
     def test_list_windows_tab_delimited(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="0\tdashboard\t0\n1\tmy:session\t1234\n",
+            stdout="0\tdashboard\t0\t0\t0\n1\tmy:session\t1234\t1\t0\n2\tother\t5678\t0\t1\n",
         )
         windows = self.tmux.list_windows()
         assert windows == [
-            {"index": 0, "name": "dashboard", "alive": False},
-            {"index": 1, "name": "my:session", "alive": True},
+            {"index": 0, "name": "dashboard", "alive": False, "active": False, "last_active": False},
+            {"index": 1, "name": "my:session", "alive": True, "active": True, "last_active": False},
+            {"index": 2, "name": "other", "alive": True, "active": False, "last_active": True},
         ]
-        # Assert format string uses tab separator
+        # Assert format string uses tab separator and includes active flags
         called_args = mock_run.call_args.args[0]
-        assert "#{window_index}\t#{window_name}\t#{pane_pid}" in called_args
+        assert (
+            "#{window_index}\t#{window_name}\t#{pane_pid}\t#{window_active}\t#{window_last_flag}"
+            in called_args
+        )
+
+    @patch("hive.tmux.subprocess.run")
+    def test_list_windows_backward_compat_three_fields(self, mock_run):
+        # Older format (3 fields) should still parse, defaulting flags to False.
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="0\tdashboard\t0\n1\twin\t1234\n",
+        )
+        windows = self.tmux.list_windows()
+        assert windows == [
+            {"index": 0, "name": "dashboard", "alive": False, "active": False, "last_active": False},
+            {"index": 1, "name": "win", "alive": True, "active": False, "last_active": False},
+        ]
 
     @patch("hive.tmux.subprocess.run")
     def test_capture_pane(self, mock_run):
@@ -146,17 +163,11 @@ class TestTmuxClient:
         )
 
     @patch("hive.tmux.subprocess.run")
-    def test_set_status_bar(self, mock_run):
+    def test_disable_status(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
-        self.tmux.set_status_bar("hive: 2 sessions | ● 1 waiting")
-        assert mock_run.call_count == 2
-        mock_run.assert_any_call(
-            ["tmux", "set-option", "-t", "test-hive", "status-left-length", "100"],
-            capture_output=True,
-            text=False,
-        )
-        mock_run.assert_any_call(
-            ["tmux", "set-option", "-t", "test-hive", "status-left", "hive: 2 sessions | ● 1 waiting"],
+        self.tmux.disable_status()
+        mock_run.assert_called_once_with(
+            ["tmux", "set-option", "-t", "test-hive", "status", "off"],
             capture_output=True,
             text=False,
         )

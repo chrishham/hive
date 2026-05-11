@@ -30,7 +30,7 @@ class TmuxClient:
         result = self._run(
             [
                 "tmux", "list-windows", "-t", self.session_name,
-                "-F", "#{window_index}\t#{window_name}\t#{pane_pid}",
+                "-F", "#{window_index}\t#{window_name}\t#{pane_pid}\t#{window_active}\t#{window_last_flag}",
             ],
             text=True,
         )
@@ -41,17 +41,21 @@ class TmuxClient:
             if not line:
                 continue
             parts = line.split("\t")
-            if len(parts) != 3:
+            if len(parts) < 3:
                 continue
             try:
                 idx = int(parts[0])
                 pid = int(parts[2])
             except ValueError:
                 continue
+            active = len(parts) > 3 and parts[3] == "1"
+            last_active = len(parts) > 4 and parts[4] == "1"
             windows.append({
                 "index": idx,
                 "name": parts[1],
                 "alive": pid > 0,
+                "active": active,
+                "last_active": last_active,
             })
         return windows
 
@@ -79,12 +83,16 @@ class TmuxClient:
         cwd: str,
         command_args: list[str],
         env: dict[str, str] | None = None,
+        detached: bool = False,
     ) -> int:
         args = [
             "tmux", "new-window", "-t", f"{self.session_name}:",
             "-n", name,
             "-c", cwd,
         ]
+        if detached:
+            # Spawn without stealing focus from the currently-active window.
+            args.append("-d")
         if env:
             for k, v in env.items():
                 args.extend(["-e", f"{k}={v}"])
@@ -116,9 +124,37 @@ class TmuxClient:
         # Non-zero pid means alive, 0 means dead
         return result.stdout.strip() != "0"
 
-    def set_status_bar(self, text: str) -> None:
-        self._run(["tmux", "set-option", "-t", self.session_name, "status-left-length", "100"])
-        self._run(["tmux", "set-option", "-t", self.session_name, "status-left", text])
+    def disable_status(self) -> None:
+        self._run(["tmux", "set-option", "-t", self.session_name, "status", "off"])
+
+    def setup_shortcut_bar(self, shortcuts: str) -> None:
+        # Single status row styled to match the dashboard footer:
+        # muted light-gray text on a dark-gray background, left-aligned with padding.
+        bg = "colour236"
+        fg = "colour248"
+        # status-style sets the row's base color so the unused right side fills cleanly.
+        self._run([
+            "tmux", "set-option", "-t", self.session_name,
+            "status-style", f"bg={bg},fg={fg}",
+        ])
+        fmt = f"#[align=left fg={fg} bg={bg}] {shortcuts}"
+        self._run([
+            "tmux", "set-option", "-t", self.session_name,
+            "status-format[0]", fmt,
+        ])
+        # Start hidden (we boot on the dashboard).
+        self._run(["tmux", "set-option", "-t", self.session_name, "status", "off"])
+        # Toggle status bar on/off based on active window: hidden on dashboard
+        # (window 0), shown on every other window.
+        hook = (
+            f'if-shell -F "#{{==:#{{window_index}},0}}" '
+            f'"set-option -t {self.session_name} status off" '
+            f'"set-option -t {self.session_name} status on"'
+        )
+        self._run([
+            "tmux", "set-hook", "-t", self.session_name,
+            "after-select-window", hook,
+        ])
 
     def set_window_option(self, window_index: int, option: str, value: str) -> None:
         self._run([
