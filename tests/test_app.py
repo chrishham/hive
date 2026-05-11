@@ -266,3 +266,20 @@ def test_status_bar_escapes_hash_in_session_name(
     app._update_tmux_status()
     assert "a##b ●" in captured["text"]
     assert "a#b ●" not in captured["text"]
+
+
+def test_validate_clone_target_rejects_dotdot(tmp_path):
+    from hive.app import _validate_clone_target
+    with pytest.raises(ValueError):
+        _validate_clone_target(str(tmp_path), "..")
+
+
+def test_validate_clone_target_rejects_separators(tmp_path):
+    from hive.app import _validate_clone_target
+    with pytest.raises(ValueError):
+        _validate_clone_target(str(tmp_path), "a/b")
+
+
+def test_validate_clone_target_accepts_normal_repo(tmp_path):
+    from hive.app import _validate_clone_target
+    assert _validate_clone_target(str(tmp_path), "myrepo") == str(tmp_path / "myrepo")

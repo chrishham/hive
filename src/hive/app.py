@@ -40,6 +40,16 @@ from hive.widgets.preview import PreviewPane
 from hive.widgets.session_list import SessionData, SessionListItem, SessionListView
 
 
+def _validate_clone_target(clone_path: str, repo_name: str) -> str:
+    if repo_name in {"", ".", ".."} or "/" in repo_name or "\\" in repo_name:
+        raise ValueError(f"unsafe repo name: {repo_name!r}")
+    base = Path(clone_path).resolve()
+    target = (base / repo_name).resolve()
+    if not target.is_relative_to(base):
+        raise ValueError(f"target escapes clone path: {target}")
+    return str(target)
+
+
 class HiveApp(App):
     CSS_PATH = "hive.tcss"
 
@@ -428,16 +438,26 @@ class HiveApp(App):
         url = result["url"]
         clone_path = result["clone_path"]
         repo_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
-        target = os.path.join(clone_path, repo_name)
+        try:
+            target = _validate_clone_target(clone_path, repo_name)
+        except ValueError as exc:
+            await self.push_screen_wait(ErrorScreen("Clone refused", str(exc)))
+            return
 
         if os.path.exists(target):
             choice = await self.push_screen_wait(FolderExistsScreen(target))
             if choice is None:
                 return
             if choice == "pull":
-                subprocess.run(["git", "-C", target, "pull"], capture_output=True)
+                rc = subprocess.run(["git", "-C", target, "pull"], capture_output=True, text=True)
+                if rc.returncode != 0:
+                    await self.push_screen_wait(ErrorScreen("git pull failed", rc.stderr.strip()))
+                    return
         else:
-            subprocess.run(["git", "clone", url, target], capture_output=True)
+            rc = subprocess.run(["git", "clone", url, target], capture_output=True, text=True)
+            if rc.returncode != 0:
+                await self.push_screen_wait(ErrorScreen("git clone failed", rc.stderr.strip()))
+                return
 
         name = self._next_session_name(repo_name)
         await self._create_session(target, name)
