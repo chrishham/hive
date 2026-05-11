@@ -46,6 +46,23 @@ def read_session_state_with_meta(
     return state, updated_at
 
 
+def read_session_id(name: str) -> str | None:
+    try:
+        path = state_file_path(name)
+    except ValueError:
+        return None
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sid = data.get("session_id")
+    return sid if isinstance(sid, str) and sid else None
+
+
 def remove_session_state(name: str) -> None:
     try:
         state_file_path(name).unlink(missing_ok=True)

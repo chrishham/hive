@@ -2,7 +2,7 @@ import json
 import pytest
 
 from hive.detector import SessionState
-from hive.hook_state import read_session_state, remove_session_state, state_file_path
+from hive.hook_state import read_session_state, read_session_id, remove_session_state, state_file_path
 
 
 @pytest.fixture
@@ -67,3 +67,21 @@ def test_read_session_state_unsafe_name_returns_none(fake_home):
 
 def test_remove_session_state_unsafe_name_no_raise(fake_home):
     remove_session_state("../escape")
+
+
+def test_read_session_id_returns_id(fake_home):
+    _write_state(fake_home, "foo", {"state": "working", "session_id": "abc-123"})
+    assert read_session_id("foo") == "abc-123"
+
+
+def test_read_session_id_missing_file_returns_none(fake_home):
+    assert read_session_id("nope") is None
+
+
+def test_read_session_id_no_session_id_field(fake_home):
+    _write_state(fake_home, "foo", {"state": "working"})
+    assert read_session_id("foo") is None
+
+
+def test_read_session_id_unsafe_name_returns_none(fake_home):
+    assert read_session_id("../escape") is None
