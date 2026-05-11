@@ -490,6 +490,11 @@ class HiveApp(App):
         data = list_view.get_session_data()
         if data is None:
             return
+        if data.name in self.session_data_map:
+            await self.push_screen_wait(
+                ErrorScreen("Cannot rename", "Kill the session first, then rename it.")
+            )
+            return
         new_name = await self.push_screen_wait(RenameScreen(data.name))
         if new_name and new_name != data.name:
             try:

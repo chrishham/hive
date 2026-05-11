@@ -283,3 +283,69 @@ def test_validate_clone_target_rejects_separators(tmp_path):
 def test_validate_clone_target_accepts_normal_repo(tmp_path):
     from hive.app import _validate_clone_target
     assert _validate_clone_target(str(tmp_path), "myrepo") == str(tmp_path / "myrepo")
+
+
+@pytest.mark.asyncio
+@patch("hive.app.hook_installed")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+async def test_rename_active_session_rejected(
+    mock_state, mock_config, mock_tmux, mock_hook_installed
+):
+    mock_config.return_value = HiveConfig.defaults()
+    mock_state.return_value = HiveState()
+    mock_tmux_instance = MagicMock()
+    mock_tmux_instance.list_windows.return_value = []
+    mock_tmux.return_value = mock_tmux_instance
+    mock_hook_installed.return_value = True
+
+    from hive.app import HiveApp
+    app = HiveApp()
+
+    # Simulate an active session
+    app.session_data_map = {
+        "active-sess": SessionData(
+            name="active-sess",
+            project_path="/tmp/proj",
+            tmux_window=1,
+            state=SessionState.WAITING,
+        ),
+    }
+
+    # Stub _set_warning_banner to capture calls
+    warning_banner_text = {"text": ""}
+    app._set_warning_banner = lambda text: warning_banner_text.update(text=text)
+
+    # Track if ErrorScreen was pushed
+    error_screen_args = {}
+
+    async def mock_push_screen_wait(screen):
+        if screen.__class__.__name__ == "ErrorScreen":
+            error_screen_args["title"] = screen.error_title
+            error_screen_args["message"] = screen.error_message
+            return None
+        elif screen.__class__.__name__ == "RenameScreen":
+            # This should NOT be called
+            return "new-name"
+        return None
+
+    app.push_screen_wait = mock_push_screen_wait
+
+    # Mock the list view to return our active session
+    from hive.widgets.session_list import SessionListView
+    list_view = MagicMock(spec=SessionListView)
+    list_view.get_session_data.return_value = app.session_data_map["active-sess"]
+
+    app.query_one = lambda selector, expected_type=None: list_view
+
+    # Call the underlying wrapped function directly to avoid Worker complexity
+    await app.action_rename_session.__wrapped__(app)
+
+    # Verify ErrorScreen was shown
+    assert "title" in error_screen_args
+    assert "Cannot rename" in error_screen_args["title"]
+    assert "Kill the session first" in error_screen_args["message"]
+
+    # Verify tmux.rename_window was NOT called
+    mock_tmux_instance.rename_window.assert_not_called()
