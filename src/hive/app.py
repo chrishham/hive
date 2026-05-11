@@ -18,7 +18,7 @@ from textual.widgets import Label, Static
 
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
-from hive.hook_state import read_session_state_with_meta, remove_session_state
+from hive.hook_state import read_session_id, read_session_state_with_meta, remove_session_state
 from hive.install_hooks import hook_installed
 from hive.safety import (
     InvalidSessionName,
@@ -36,6 +36,7 @@ from hive.widgets.dialogs import (
     RenameScreen,
     SessionOptionsScreen,
 )
+from hive.synopsis import get_synopsis, remove_cached_synopsis
 from hive.widgets.preview import PreviewPane
 from hive.widgets.session_list import SessionData, SessionListItem, SessionListView
 
@@ -148,6 +149,7 @@ class HiveApp(App):
         self._prev_active_window: int | None = None
         self._starting_up: bool = True
         self._orphan_strikes: dict[str, int] = {}
+        self._synopsis_in_flight: set[str] = set()
 
     def compose(self) -> ComposeResult:
         will_restore = bool(self.state.sessions)
@@ -474,10 +476,15 @@ class HiveApp(App):
                 context_str=context_str,
                 context_pct=context_pct,
                 urls=urls,
-                preview_text=pane_text,
+                synopsis=self.session_data_map.get(name, SessionData(name=name, project_path="", tmux_window=0)).synopsis,
                 waiting_since=waiting_since,
             )
             self.session_data_map[name] = data
+
+            session_id = read_session_id(name)
+            if session_id and name not in self._synopsis_in_flight:
+                self._synopsis_in_flight.add(name)
+                self._fetch_synopsis(name, project_path, session_id)
 
         removed = set(self.session_data_map.keys()) - current_names
         for name in removed:
@@ -494,6 +501,17 @@ class HiveApp(App):
         self._ensure_highlight(list_view)
         self._update_preview(list_view, preview)
         self._update_header()
+
+    @work
+    async def _fetch_synopsis(self, session_name: str, project_path: str, session_id: str) -> None:
+        try:
+            synopsis = await get_synopsis(session_name, project_path, session_id)
+            if session_name in self.session_data_map:
+                self.session_data_map[session_name].synopsis = synopsis
+        except Exception:
+            pass
+        finally:
+            self._synopsis_in_flight.discard(session_name)
 
     def _sync_dashboard_focus(self, list_view: SessionListView, windows: list[dict]) -> None:
         active_idx: int | None = None
@@ -566,7 +584,7 @@ class HiveApp(App):
     def _update_preview(self, list_view: SessionListView, preview: PreviewPane) -> None:
         data = list_view.get_session_data()
         if data:
-            preview.set_content(data.preview_text, self.config.preview_lines)
+            preview.set_content(data.synopsis or "(generating synopsis...)")
         else:
             preview.clear_content()
 
@@ -744,6 +762,7 @@ class HiveApp(App):
             self.state.remove_session(data.name)
             self.state.save_default()
             remove_session_state(data.name)
+            remove_cached_synopsis(data.name)
 
     async def action_resume_session(self) -> None:
         list_view = self.query_one("#session-panel", SessionListView)
