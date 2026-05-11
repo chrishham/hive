@@ -90,7 +90,9 @@ class HiveApp(App):
                 cmd += f" --resume {session_id}"
             else:
                 cmd += " --continue"
-            window_idx = self.tmux.new_window(name, project_path, cmd)
+            window_idx = self.tmux.new_window(
+                name, project_path, cmd, env={"HIVE_SESSION": name}
+            )
             self.state.sessions[name]["tmux_window"] = window_idx
         self.tmux.select_window(0)
         self.state.save_default()
@@ -280,7 +282,9 @@ class HiveApp(App):
         cmd = f"claude --dangerously-skip-permissions --name {session_name}"
         if resume_id:
             cmd += f" --resume {resume_id}"
-        window_idx = self.tmux.new_window(session_name, project_path, cmd)
+        window_idx = self.tmux.new_window(
+            session_name, project_path, cmd, env={"HIVE_SESSION": session_name}
+        )
         self.state.add_session(session_name, project_path, window_idx, resume_id or "")
         self.state.save_default()
 

@@ -40,7 +40,11 @@ def main() -> None:
             sys.exit(1)
         _ensure_session(tmux, config)
         name = os.path.basename(path)
-        tmux.new_window(name, path, f"claude --dangerously-skip-permissions --name {name}")
+        tmux.new_window(
+            name, path,
+            f"claude --dangerously-skip-permissions --name {name}",
+            env={"HIVE_SESSION": name},
+        )
         print(f"Created session '{name}' in {path}")
         return
 
