@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -118,3 +119,51 @@ def generate_synopsis_text(client, model: str, messages: list[dict[str, str]]) -
         messages=[{"role": "user", "content": conversation}],
     )
     return response.content[0].text.strip()
+
+
+def _synopsis_cache_dir() -> Path:
+    return Path.home() / ".claude" / "hive" / "synopsis"
+
+
+def load_cached_synopsis(session_name: str, jsonl_mtime: float, jsonl_size: int) -> str | None:
+    cache_path = _synopsis_cache_dir() / f"{session_name}.json"
+    if not cache_path.is_file():
+        return None
+    try:
+        data = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("jsonl_mtime") != jsonl_mtime or data.get("jsonl_size") != jsonl_size:
+        return None
+    synopsis = data.get("synopsis")
+    return synopsis if isinstance(synopsis, str) else None
+
+
+def save_cached_synopsis(
+    session_name: str,
+    session_id: str,
+    jsonl_mtime: float,
+    jsonl_size: int,
+    synopsis: str,
+) -> None:
+    cache_dir = _synopsis_cache_dir()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{session_name}.json"
+    data = {
+        "session_id": session_id,
+        "jsonl_mtime": jsonl_mtime,
+        "jsonl_size": jsonl_size,
+        "synopsis": synopsis,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    cache_path.write_text(json.dumps(data, indent=2))
+
+
+def remove_cached_synopsis(session_name: str) -> None:
+    cache_path = _synopsis_cache_dir() / f"{session_name}.json"
+    try:
+        cache_path.unlink(missing_ok=True)
+    except OSError:
+        pass

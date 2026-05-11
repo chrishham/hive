@@ -2,13 +2,25 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 
-from hive.synopsis import extract_conversation, build_client
+from hive.synopsis import (
+    extract_conversation,
+    build_client,
+    load_cached_synopsis,
+    save_cached_synopsis,
+)
 
 
 @pytest.fixture
 def fake_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     return tmp_path
+
+
+@pytest.fixture
+def cache_dir(fake_home):
+    d = fake_home / ".claude" / "hive" / "synopsis"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def _make_jsonl(home, project_path, session_id, messages):
@@ -157,3 +169,38 @@ def test_generate_synopsis_text_empty_messages():
     from hive.synopsis import generate_synopsis_text
     result = generate_synopsis_text(MagicMock(), "model", [])
     assert result == ""
+
+
+def test_save_and_load_cache(fake_home, cache_dir):
+    save_cached_synopsis("my-session", "sess-id", 1000.0, 5000, "This is the synopsis.")
+    result = load_cached_synopsis("my-session", 1000.0, 5000)
+    assert result == "This is the synopsis."
+
+
+def test_load_cache_stale_mtime(fake_home, cache_dir):
+    save_cached_synopsis("my-session", "sess-id", 1000.0, 5000, "Old synopsis.")
+    result = load_cached_synopsis("my-session", 2000.0, 5000)
+    assert result is None
+
+
+def test_load_cache_stale_size(fake_home, cache_dir):
+    save_cached_synopsis("my-session", "sess-id", 1000.0, 5000, "Old synopsis.")
+    result = load_cached_synopsis("my-session", 1000.0, 9999)
+    assert result is None
+
+
+def test_load_cache_missing(fake_home, cache_dir):
+    result = load_cached_synopsis("no-such-session", 1000.0, 5000)
+    assert result is None
+
+
+def test_remove_cached_synopsis(fake_home, cache_dir):
+    save_cached_synopsis("my-session", "sess-id", 1000.0, 5000, "synopsis")
+    from hive.synopsis import remove_cached_synopsis
+    remove_cached_synopsis("my-session")
+    assert load_cached_synopsis("my-session", 1000.0, 5000) is None
+
+
+def test_remove_cached_synopsis_idempotent(fake_home, cache_dir):
+    from hive.synopsis import remove_cached_synopsis
+    remove_cached_synopsis("nonexistent")  # must not raise
