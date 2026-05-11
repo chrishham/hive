@@ -66,6 +66,32 @@ _SPLASH_BASE = (
 
 _DOT_FRAMES = (".    ", ". .  ", ". . .", " . . ", "  . .", "   . ")
 
+def _build_goodbye_splash(count: int, frame: int = 0) -> str:
+    label = "session" if count == 1 else "sessions"
+    dots = _DOT_FRAMES[frame % len(_DOT_FRAMES)]
+    return (
+        "\n"
+        "[#DAA520]         __    __    __    __    __[/]\n"
+        "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
+        "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
+        "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
+        "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
+        "\n"
+        "[bold #FFD700]        ██╗  ██╗██╗██╗   ██╗███████╗[/]\n"
+        "[bold #FFD700]        ██║  ██║██║██║   ██║██╔════╝[/]\n"
+        "[bold #FFD700]        ███████║██║██║   ██║█████╗[/]\n"
+        "[bold #FFD700]        ██╔══██║██║╚██╗ ██╔╝██╔══╝[/]\n"
+        "[bold #FFD700]        ██║  ██║██║ ╚████╔╝ ███████╗[/]\n"
+        "[bold #FFD700]        ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚══════╝[/]\n"
+        "\n"
+        f"[#B8860B]      Shutting down {count} {label} {dots}[/]\n"
+        "\n"
+        "[#DAA520]         __    __    __    __    __[/]\n"
+        "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
+        "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
+        "\n"
+    )
+
 
 def _build_splash_text(frame: int) -> str:
     dots = _DOT_FRAMES[frame % len(_DOT_FRAMES)]
@@ -819,11 +845,43 @@ class HiveApp(App):
 
     async def action_quit_app(self) -> None:
         windows = self.tmux.list_windows()
-        for win in windows:
-            if win["index"] == 0:
-                continue
-            self.tmux.send_keys(win["index"], "q")
-        import asyncio
-        await asyncio.sleep(2)
+        session_windows = [w for w in windows if w["index"] != 0]
+        count = len(session_windows)
+
+        if count:
+            self._show_goodbye_splash(count)
+            for win in session_windows:
+                self.tmux.send_keys(win["index"], "q")
+            await self._wait_sessions_quit(session_windows, count, max_wait=15.0)
+
         self.tmux.kill_session()
         self.exit()
+
+    def _show_goodbye_splash(self, count: int) -> None:
+        splash = self.query_one("#splash", Static)
+        splash.update(_build_goodbye_splash(count))
+        self._show_splash(True)
+
+    async def _wait_sessions_quit(
+        self, session_windows: list[dict], count: int, max_wait: float = 15.0
+    ) -> None:
+        loop = asyncio.get_event_loop()
+        end = loop.time() + max_wait
+        target_indices = {w["index"] for w in session_windows}
+        try:
+            splash = self.query_one("#splash", Static)
+        except Exception:
+            splash = None
+        i = 0
+        while loop.time() < end:
+            alive = await asyncio.to_thread(self._alive_window_count, target_indices)
+            if alive == 0:
+                break
+            if splash is not None:
+                splash.update(_build_goodbye_splash(count, i))
+            await asyncio.sleep(0.15)
+            i += 1
+
+    def _alive_window_count(self, target_indices: set[int]) -> int:
+        windows = self.tmux.list_windows()
+        return sum(1 for w in windows if w["index"] in target_indices)
