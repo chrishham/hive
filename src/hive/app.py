@@ -15,7 +15,7 @@ from textual.widgets import Label
 
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
-from hive.hook_state import read_session_state
+from hive.hook_state import read_session_state, remove_session_state
 from hive.tmux import TmuxClient
 from hive.widgets.dialogs import (
     CloneScreen,
@@ -348,6 +348,7 @@ class HiveApp(App):
             self.tmux.kill_window(data.tmux_window)
             self.state.remove_session(data.name)
             self.state.save_default()
+            remove_session_state(data.name)
 
     async def action_resume_session(self) -> None:
         list_view = self.query_one("#session-panel", SessionListView)
