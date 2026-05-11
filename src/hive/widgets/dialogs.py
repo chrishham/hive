@@ -335,3 +335,25 @@ class RenameScreen(ModalScreen[str | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class ErrorScreen(ModalScreen[None]):
+    BINDINGS = [("escape", "cancel", "Cancel"), ("enter", "cancel", "Cancel")]
+
+    def __init__(self, title: str, message: str) -> None:
+        super().__init__()
+        self.error_title = title
+        self.error_message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="error-dialog"):
+            yield Label(self.error_title, id="error-title")
+            yield Label(self.error_message, id="error-message")
+            with Horizontal(id="error-buttons"):
+                yield Button("OK", variant="primary", id="btn-ok")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)

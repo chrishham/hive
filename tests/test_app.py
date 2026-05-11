@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 from hive.widgets.session_list import SessionListItem, SessionData
 from hive.detector import SessionState
 from hive.config import HiveConfig, HiveState
+from hive.safety import InvalidSessionName
 
 
 class TestSessionData:
@@ -71,7 +72,7 @@ class TestHiveAppSmoke:
         mock_state.return_value = HiveState()
         mock_tmux_instance = MagicMock()
         mock_tmux_instance.list_windows.return_value = [
-            {"index": 1, "name": "sess1", "active": True}
+            {"index": 1, "name": "sess1", "alive": True}
         ]
         # Pane text would otherwise classify as WAITING
         mock_tmux_instance.capture_pane.return_value = (
@@ -86,3 +87,96 @@ class TestHiveAppSmoke:
             await app._refresh_sessions()
             data = app.session_data_map["sess1"]
             assert data.state == SessionState.WORKING
+
+
+@pytest.mark.asyncio
+@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+async def test_create_session_validates_name(mock_state, mock_config, mock_tmux, mock_install_hooks):
+    mock_config.return_value = HiveConfig.defaults()
+    mock_state.return_value = HiveState()
+    mock_tmux.return_value = MagicMock()
+    from hive.app import HiveApp
+    app = HiveApp()
+    with pytest.raises(InvalidSessionName):
+        await app._create_session("/tmp", "bad name; rm -rf /")
+
+
+@pytest.mark.asyncio
+@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+async def test_restore_sanitizes_bad_existing_state(
+    mock_state, mock_config, mock_tmux, mock_install_hooks, tmp_path
+):
+    mock_config.return_value = HiveConfig.defaults()
+    state = HiveState()
+    state.sessions = {
+        "bad name": {
+            "project_path": str(tmp_path),
+            "tmux_window": 1,
+            "claude_session_id": "",
+        }
+    }
+    mock_state.return_value = state
+
+    captured: dict = {}
+
+    def fake_new_window(name, cwd, command_args, env=None):
+        captured["name"] = name
+        captured["env_session"] = env["HIVE_SESSION"] if env else ""
+        captured["command_args"] = command_args
+        return 99
+
+    tmux_instance = MagicMock()
+    tmux_instance.list_windows.return_value = []
+    tmux_instance.new_window.side_effect = fake_new_window
+    tmux_instance.select_window.return_value = None
+    mock_tmux.return_value = tmux_instance
+
+    from hive.app import HiveApp
+    app = HiveApp()
+    # Stub state.save_default to a no-op to avoid touching the user's real state file
+    app.state.save_default = lambda: None
+    app._restore_sessions()
+
+    assert captured["name"] == "bad_name"
+    assert captured["env_session"] == "bad_name"
+    assert "bad name" not in app.state.sessions
+    assert "bad_name" in app.state.sessions
+
+
+@pytest.mark.asyncio
+@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+async def test_restore_does_not_infinite_loop_on_long_colliding_names(
+    mock_state, mock_config, mock_tmux, mock_install_hooks, tmp_path
+):
+    mock_config.return_value = HiveConfig.defaults()
+    state = HiveState()
+    long_a = "a" * 64
+    state.sessions = {
+        long_a: {"project_path": str(tmp_path), "tmux_window": 1, "claude_session_id": ""},
+        long_a + " bad": {"project_path": str(tmp_path), "tmux_window": 2, "claude_session_id": ""},
+    }
+    mock_state.return_value = state
+
+    tmux_instance = MagicMock()
+    tmux_instance.list_windows.return_value = []
+    tmux_instance.new_window.return_value = 99
+    tmux_instance.select_window.return_value = None
+    mock_tmux.return_value = tmux_instance
+
+    from hive.app import HiveApp
+    app = HiveApp()
+    app.state.save_default = lambda: None
+    # Should complete in finite time, not hang
+    app._restore_sessions()
+    # Original 64-a is fine; the colliding "long_a bad" gets sanitized & deduped
+    assert long_a in app.state.sessions
+    assert long_a + " bad" not in app.state.sessions

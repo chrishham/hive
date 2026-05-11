@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from hive.config import HiveConfig
+from hive.safety import InvalidSessionName, TmuxError, sanitize_session_name, validate_session_name
 from hive.tmux import TmuxClient
 
 DASHBOARD_LOG = Path.home() / ".claude" / "hive" / "dashboard.log"
@@ -33,7 +34,7 @@ def main() -> None:
         for win in windows:
             if win["index"] == 0:
                 continue
-            status = "alive" if win["active"] else "dead"
+            status = "alive" if win["alive"] else "dead"
             print(f"  {win['name']}  (window {win['index']}, {status})")
         return
 
@@ -50,13 +51,22 @@ def main() -> None:
         if not os.path.isdir(path):
             print(f"Directory not found: {path}")
             sys.exit(1)
-        _ensure_session(tmux, config)
+        _ensure_session(tmux)
         name = _unique_window_name(tmux, os.path.basename(path))
-        tmux.new_window(
-            name, path,
-            f"claude --dangerously-skip-permissions --name {name}",
-            env={"HIVE_SESSION": name},
-        )
+        try:
+            validate_session_name(name)
+        except InvalidSessionName as exc:
+            print(f"Refusing unsafe session name: {exc}")
+            sys.exit(1)
+        try:
+            tmux.new_window(
+                name, path,
+                ["claude", "--dangerously-skip-permissions", "--name", name],
+                env={"HIVE_SESSION": name},
+            )
+        except TmuxError as exc:
+            print(f"tmux failed: {exc}")
+            sys.exit(1)
         print(f"Created session '{name}' in {path}")
         return
 
@@ -78,12 +88,13 @@ def main() -> None:
         tmux.attach()
 
 
-def _ensure_session(tmux: TmuxClient, config: HiveConfig) -> None:
+def _ensure_session(tmux: TmuxClient) -> None:
     if not tmux.session_exists():
         tmux.create_session()
 
 
 def _unique_window_name(tmux: TmuxClient, base: str) -> str:
+    base = sanitize_session_name(base)
     existing = {w["name"] for w in tmux.list_windows()}
     if base not in existing:
         return base

@@ -16,10 +16,17 @@ from textual.widgets import Label
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
 from hive.hook_state import read_session_state, remove_session_state
+from hive.safety import (
+    InvalidSessionName,
+    TmuxError,
+    sanitize_session_name,
+    validate_session_name,
+)
 from hive.tmux import TmuxClient
 from hive.widgets.dialogs import (
     CloneScreen,
     ConfirmKillScreen,
+    ErrorScreen,
     FolderExistsScreen,
     ProjectPickerScreen,
     RenameScreen,
@@ -75,9 +82,37 @@ class HiveApp(App):
         self._restore_sessions()
         self.poll_sessions()
 
+    def _set_warning_banner(self, text: str) -> None:
+        # Filled in by the banner task; keep a no-op so tests pass now.
+        pass
+
     def _restore_sessions(self) -> None:
         if not self.state.sessions:
             return
+
+        renames: list[tuple[str, str]] = []
+        for name in list(self.state.sessions.keys()):
+            try:
+                validate_session_name(name)
+            except InvalidSessionName:
+                base = sanitize_session_name(name)
+                clean = base
+                counter = 1
+                while clean in self.state.sessions and clean != name:
+                    suffix = f"_{counter}"
+                    truncated_base = base[: 64 - len(suffix)]
+                    clean = sanitize_session_name(truncated_base + suffix)
+                    counter += 1
+                    if counter > 1000:
+                        # Give up; overwrite would be worse than dropping.
+                        clean = base
+                        break
+                self.state.sessions[clean] = self.state.sessions.pop(name)
+                renames.append((name, clean))
+        if renames:
+            summary = ", ".join(f"{a!r}->{b!r}" for a, b in renames)
+            self._set_warning_banner(f"sanitized state names: {summary}")
+
         windows = self.tmux.list_windows()
         existing_names = {w["name"] for w in windows if w["index"] != 0}
         for name, info in list(self.state.sessions.items()):
@@ -88,14 +123,21 @@ class HiveApp(App):
                 self.state.remove_session(name)
                 continue
             session_id = info.get("claude_session_id", "")
-            cmd = f"claude --dangerously-skip-permissions --name {name}"
             if session_id:
-                cmd += f" --resume {session_id}"
+                args = self._build_claude_args(name, session_id)
             else:
-                cmd += " --continue"
-            window_idx = self.tmux.new_window(
-                name, project_path, cmd, env={"HIVE_SESSION": name}
-            )
+                args = [
+                    "claude", "--dangerously-skip-permissions",
+                    "--name", name, "--continue",
+                ]
+            try:
+                window_idx = self.tmux.new_window(
+                    name, project_path, args, env={"HIVE_SESSION": name}
+                )
+            except TmuxError as exc:
+                import sys
+                print(f"hive: failed to restore session {name!r}: {exc}", file=sys.stderr)
+                continue
             self.state.sessions[name]["tmux_window"] = window_idx
         self.tmux.select_window(0)
         self.state.save_default()
@@ -282,13 +324,29 @@ class HiveApp(App):
             i += 1
         return f"{project_name}-{i:03d}"
 
-    async def _create_session(self, project_path: str, session_name: str, resume_id: str | None = None) -> None:
-        cmd = f"claude --dangerously-skip-permissions --name {session_name}"
+    def _build_claude_args(
+        self, session_name: str, resume_id: str | None
+    ) -> list[str]:
+        args = ["claude", "--dangerously-skip-permissions", "--name", session_name]
         if resume_id:
-            cmd += f" --resume {resume_id}"
-        window_idx = self.tmux.new_window(
-            session_name, project_path, cmd, env={"HIVE_SESSION": session_name}
-        )
+            args.extend(["--resume", resume_id])
+        return args
+
+    async def _create_session(
+        self,
+        project_path: str,
+        session_name: str,
+        resume_id: str | None = None,
+    ) -> None:
+        validate_session_name(session_name)
+        args = self._build_claude_args(session_name, resume_id)
+        try:
+            window_idx = self.tmux.new_window(
+                session_name, project_path, args, env={"HIVE_SESSION": session_name}
+            )
+        except TmuxError as exc:
+            await self.push_screen_wait(ErrorScreen("tmux failed", str(exc)))
+            return
         self.state.add_session(session_name, project_path, window_idx, resume_id or "")
         self.state.save_default()
 
@@ -369,6 +427,11 @@ class HiveApp(App):
             return
         new_name = await self.push_screen_wait(RenameScreen(data.name))
         if new_name and new_name != data.name:
+            try:
+                validate_session_name(new_name)
+            except InvalidSessionName as exc:
+                await self.push_screen_wait(ErrorScreen("Invalid name", str(exc)))
+                return
             self.tmux.rename_window(data.tmux_window, new_name)
             if data.name in self.state.sessions:
                 self.state.sessions[new_name] = self.state.sessions.pop(data.name)

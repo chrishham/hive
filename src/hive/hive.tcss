@@ -80,3 +80,30 @@ ModalScreen {
 #picker-filter, #clone-url, #rename-input, #session-name {
     margin: 1 0;
 }
+
+ErrorScreen {
+    align: center middle;
+}
+
+#error-dialog {
+    width: 70;
+    max-height: 80%;
+    border: thick $error;
+    background: $surface;
+    padding: 1 2;
+}
+
+#error-title {
+    text-style: bold;
+    color: $error;
+    padding-bottom: 1;
+}
+
+#error-message {
+    padding-bottom: 1;
+}
+
+#error-buttons {
+    align-horizontal: right;
+    height: auto;
+}
