@@ -180,3 +180,81 @@ async def test_restore_does_not_infinite_loop_on_long_colliding_names(
     # Original 64-a is fine; the colliding "long_a bad" gets sanitized & deduped
     assert long_a in app.state.sessions
     assert long_a + " bad" not in app.state.sessions
+
+
+@pytest.mark.asyncio
+@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+async def test_refresh_exception_is_caught_and_banner_set(
+    mock_state, mock_config, mock_tmux, mock_install_hooks
+):
+    mock_config.return_value = HiveConfig.defaults()
+    mock_state.return_value = HiveState()
+    mock_tmux.return_value = MagicMock()
+    from hive.app import HiveApp
+    app = HiveApp()
+
+    async def boom():
+        raise RuntimeError("boom")
+
+    app._refresh_sessions = boom
+    captured: dict[str, str] = {}
+    app._set_error_banner = lambda text: captured.setdefault("text", text)
+    app._clear_error_banner = lambda: captured.pop("text", None)
+
+    await app._poll_once()
+    assert "boom" in captured["text"]
+
+
+@pytest.mark.asyncio
+@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+async def test_refresh_success_clears_banner(
+    mock_state, mock_config, mock_tmux, mock_install_hooks
+):
+    mock_config.return_value = HiveConfig.defaults()
+    mock_state.return_value = HiveState()
+    mock_tmux.return_value = MagicMock()
+    from hive.app import HiveApp
+    app = HiveApp()
+
+    async def ok():
+        return None
+
+    app._refresh_sessions = ok
+    cleared = {"flag": False}
+    app._set_error_banner = lambda _: None
+    app._clear_error_banner = lambda: cleared.update(flag=True)
+
+    await app._poll_once()
+    assert cleared["flag"] is True
+
+
+@patch("hive.install_hooks.install_hooks")
+@patch("hive.app.TmuxClient")
+@patch("hive.app.HiveConfig.load_default")
+@patch("hive.app.HiveState.load_default")
+def test_status_bar_escapes_hash_in_session_name(
+    mock_state, mock_config, mock_tmux, mock_install_hooks
+):
+    mock_config.return_value = HiveConfig.defaults()
+    mock_state.return_value = HiveState()
+    tmux_instance = MagicMock()
+    captured: dict[str, str] = {}
+    tmux_instance.set_status_bar = lambda t: captured.setdefault("text", t)
+    mock_tmux.return_value = tmux_instance
+
+    from hive.app import HiveApp
+    app = HiveApp()
+    app.session_data_map = {
+        "a#b": SessionData(
+            name="a#b", project_path="", tmux_window=1, state=SessionState.WAITING
+        ),
+    }
+    app._update_tmux_status()
+    assert "a##b ●" in captured["text"]
+    assert "a#b ●" not in captured["text"]

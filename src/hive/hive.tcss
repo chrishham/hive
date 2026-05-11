@@ -107,3 +107,18 @@ ErrorScreen {
     align-horizontal: right;
     height: auto;
 }
+
+.banner {
+    width: 100%;
+    height: auto;
+    padding: 0 1;
+    display: none;
+}
+
+.banner-info { background: $primary 30%; color: $text; }
+.banner-warn { background: $warning 30%; color: $text; }
+.banner-error { background: $error 30%; color: $text; }
+
+#info-banner.has-text, #warning-banner.has-text, #error-banner.has-text {
+    display: block;
+}

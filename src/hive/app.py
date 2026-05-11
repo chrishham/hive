@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import sys
+import traceback
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +21,7 @@ from hive.hook_state import read_session_state, remove_session_state
 from hive.safety import (
     InvalidSessionName,
     TmuxError,
+    escape_tmux_format,
     sanitize_session_name,
     validate_session_name,
 )
@@ -69,6 +72,9 @@ class HiveApp(App):
         if waiting:
             header_text += f" ({waiting}●)"
         yield Label(header_text, id="header")
+        yield Label("", id="info-banner", classes="banner banner-info")
+        yield Label("", id="warning-banner", classes="banner banner-warn")
+        yield Label("", id="error-banner", classes="banner banner-error")
         with Horizontal(id="main"):
             yield SessionListView(id="session-panel", initial_index=0)
             yield PreviewPane("(no session selected)", id="preview-panel")
@@ -82,9 +88,37 @@ class HiveApp(App):
         self._restore_sessions()
         self.poll_sessions()
 
+    def _set_error_banner(self, text: str) -> None:
+        try:
+            label = self.query_one("#error-banner", Label)
+            label.update(text)
+            label.set_class(bool(text), "has-text")
+        except Exception:
+            pass
+
+    def _clear_error_banner(self) -> None:
+        try:
+            label = self.query_one("#error-banner", Label)
+            label.update("")
+            label.set_class(False, "has-text")
+        except Exception:
+            pass
+
     def _set_warning_banner(self, text: str) -> None:
-        # Filled in by the banner task; keep a no-op so tests pass now.
-        pass
+        try:
+            label = self.query_one("#warning-banner", Label)
+            label.update(text)
+            label.set_class(bool(text), "has-text")
+        except Exception:
+            pass
+
+    def _set_info_banner(self, text: str) -> None:
+        try:
+            label = self.query_one("#info-banner", Label)
+            label.update(text)
+            label.set_class(bool(text), "has-text")
+        except Exception:
+            pass
 
     def _restore_sessions(self) -> None:
         if not self.state.sessions:
@@ -142,10 +176,20 @@ class HiveApp(App):
         self.tmux.select_window(0)
         self.state.save_default()
 
+    async def _poll_once(self) -> None:
+        try:
+            await self._refresh_sessions()
+            self._clear_error_banner()
+        except Exception as exc:
+            traceback.print_exc(file=sys.stderr)
+            self._set_error_banner(
+                f"refresh failed: {type(exc).__name__}: {exc} — see ~/.claude/hive/dashboard.log"
+            )
+
     @work(exclusive=True)
     async def poll_sessions(self) -> None:
         while True:
-            await self._refresh_sessions()
+            await self._poll_once()
             await asyncio.sleep(self.config.refresh_interval_ms / 1000)
 
     async def _refresh_sessions(self) -> None:
@@ -273,7 +317,7 @@ class HiveApp(App):
             parts.append(f"● {waiting} waiting")
         for s in self.session_data_map.values():
             if s.state == SessionState.WAITING:
-                parts.append(f"{s.name} ●")
+                parts.append(f"{escape_tmux_format(s.name)} ●")
         parts.append("Ctrl+B 0 → dashboard")
         self.tmux.set_status_bar(" | ".join(parts))
 
