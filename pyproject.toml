@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 hive = "hive.__main__:main"
+hive-hook = "hive.hook_writer:main"
 
 [build-system]
 requires = ["hatchling"]
