@@ -33,6 +33,14 @@ def main() -> None:
             print(f"  {win['name']}  (window {win['index']}, {status})")
         return
 
+    if command == "install-hooks":
+        from hive.install_hooks import install_hooks, settings_path
+        if install_hooks():
+            print(f"Installed hive hooks into {settings_path()}")
+            return
+        print(f"Could not install hooks (corrupt {settings_path()}?)")
+        sys.exit(1)
+
     if command == "new" and len(args) >= 2:
         path = os.path.abspath(args[1])
         if not os.path.isdir(path):
@@ -50,7 +58,7 @@ def main() -> None:
 
     if command and command != "":
         print(f"Unknown command: {command}")
-        print("Usage: hive [attach|list|new <path>]")
+        print("Usage: hive [attach|list|new <path>|install-hooks]")
         sys.exit(1)
 
     if os.environ.get("TMUX"):

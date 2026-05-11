@@ -52,6 +52,8 @@ class HiveApp(App):
         self.tmux = TmuxClient(self.config.tmux_session_name)
         self.session_data_map: dict[str, SessionData] = {}
         self._last_attached: str | None = None
+        from hive.install_hooks import install_hooks
+        install_hooks()
 
     def compose(self) -> ComposeResult:
         waiting = sum(1 for s in self.session_data_map.values() if s.state == SessionState.WAITING)
