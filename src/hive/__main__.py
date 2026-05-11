@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import sys
 from pathlib import Path
 
@@ -76,14 +75,16 @@ def main() -> None:
         sys.exit(1)
 
     if os.environ.get("TMUX"):
+        DASHBOARD_LOG.parent.mkdir(parents=True, exist_ok=True)
+        # Textual writes the TUI to sys.__stderr__; reassign sys.stderr so our
+        # logging/tracebacks land in the file without hijacking Textual's output.
+        sys.stderr = open(DASHBOARD_LOG, "a", buffering=1)
         from hive.app import HiveApp
         app = HiveApp()
         app.run()
     else:
         if not tmux.session_exists():
-            DASHBOARD_LOG.parent.mkdir(parents=True, exist_ok=True)
-            dashboard_cmd = f"uv run python -m hive 2>> {shlex.quote(str(DASHBOARD_LOG))}"
-            tmux.create_session(window_name="dashboard", command=dashboard_cmd)
+            tmux.create_session(window_name="dashboard", command="uv run python -m hive")
             tmux.set_window_option(0, "remain-on-exit", "on")
         tmux.attach()
 
