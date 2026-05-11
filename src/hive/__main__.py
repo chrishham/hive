@@ -47,7 +47,7 @@ def main() -> None:
             print(f"Directory not found: {path}")
             sys.exit(1)
         _ensure_session(tmux, config)
-        name = os.path.basename(path)
+        name = _unique_window_name(tmux, os.path.basename(path))
         tmux.new_window(
             name, path,
             f"claude --dangerously-skip-permissions --name {name}",
@@ -74,6 +74,16 @@ def main() -> None:
 def _ensure_session(tmux: TmuxClient, config: HiveConfig) -> None:
     if not tmux.session_exists():
         tmux.create_session()
+
+
+def _unique_window_name(tmux: TmuxClient, base: str) -> str:
+    existing = {w["name"] for w in tmux.list_windows()}
+    if base not in existing:
+        return base
+    i = 2
+    while f"{base}-{i:03d}" in existing:
+        i += 1
+    return f"{base}-{i:03d}"
 
 
 if __name__ == "__main__":
