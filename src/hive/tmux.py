@@ -56,17 +56,23 @@ class TmuxClient:
         )
         return result.stdout if result.returncode == 0 else ""
 
-    def new_window(self, name: str, cwd: str, command: str) -> int:
-        result = self._run(
-            [
-                "tmux", "new-window", "-t", self.session_name,
-                "-n", name,
-                "-c", cwd,
-                "-P", "-F", "#{window_index}",
-                command,
-            ],
-            text=True,
-        )
+    def new_window(
+        self,
+        name: str,
+        cwd: str,
+        command: str,
+        env: dict[str, str] | None = None,
+    ) -> int:
+        args = [
+            "tmux", "new-window", "-t", self.session_name,
+            "-n", name,
+            "-c", cwd,
+        ]
+        if env:
+            for k, v in env.items():
+                args.extend(["-e", f"{k}={v}"])
+        args.extend(["-P", "-F", "#{window_index}", command])
+        result = self._run(args, text=True)
         return int(result.stdout.strip())
 
     def kill_window(self, window_index: int) -> None:

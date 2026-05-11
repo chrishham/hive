@@ -121,3 +121,21 @@ class TestTmuxClient:
             ["tmux", "set-option", "-t", "test-hive", "status-left", "hive: 2 sessions | ● 1 waiting"],
             capture_output=True,
         )
+
+
+def test_new_window_with_env(monkeypatch):
+    from hive.tmux import TmuxClient
+    captured = {}
+
+    def fake_run(self, args, text=False):
+        captured["args"] = args
+        class R: returncode = 0; stdout = "5"
+        return R()
+
+    monkeypatch.setattr(TmuxClient, "_run", fake_run)
+    client = TmuxClient("hive")
+    idx = client.new_window("foo", "/tmp", "claude", env={"HIVE_SESSION": "foo"})
+    assert idx == 5
+    assert "-e" in captured["args"]
+    e_idx = captured["args"].index("-e")
+    assert captured["args"][e_idx + 1] == "HIVE_SESSION=foo"
