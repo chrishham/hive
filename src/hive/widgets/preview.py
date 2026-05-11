@@ -33,6 +33,10 @@ class PreviewPane(Static):
     }
     """
 
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs.setdefault("markup", False)
+        super().__init__(*args, **kwargs)
+
     def set_content(self, text: str, max_lines: int = 20) -> None:
         cleaned = clean_preview(text)
         lines = cleaned.split("\n")
