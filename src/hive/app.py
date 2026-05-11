@@ -15,6 +15,7 @@ from textual.widgets import Label
 
 from hive.config import HiveConfig, HiveState
 from hive.detector import SessionState, detect_context_pct_from_pane, detect_model, detect_state, detect_urls, probe_url
+from hive.hook_state import read_session_state
 from hive.tmux import TmuxClient
 from hive.widgets.dialogs import (
     CloneScreen,
@@ -116,7 +117,8 @@ class HiveApp(App):
             current_names.add(name)
 
             pane_text = self.tmux.capture_pane(win["index"])
-            state = detect_state(pane_text)
+            hook_state = read_session_state(name)
+            state = hook_state if hook_state is not None else detect_state(pane_text)
 
             model, context_str = detect_model(pane_text)
 
