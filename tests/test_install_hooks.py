@@ -62,3 +62,10 @@ def test_install_refuses_corrupt_settings(fake_home):
     _settings_path(fake_home).write_text("not json{")
     assert install_hooks() is False
     assert _settings_path(fake_home).read_text() == "not json{"
+
+
+def test_install_returns_false_on_write_error(fake_home, monkeypatch):
+    def raise_oserror(self, *args, **kwargs):
+        raise OSError("simulated permission denied")
+    monkeypatch.setattr("pathlib.Path.write_text", raise_oserror)
+    assert install_hooks() is False

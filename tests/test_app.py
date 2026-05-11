@@ -32,10 +32,11 @@ class TestSessionData:
 
 class TestHiveAppSmoke:
     @pytest.mark.asyncio
+    @patch("hive.install_hooks.install_hooks")
     @patch("hive.app.TmuxClient")
     @patch("hive.app.HiveConfig.load_default")
     @patch("hive.app.HiveState.load_default")
-    async def test_app_mounts(self, mock_state, mock_config, mock_tmux):
+    async def test_app_mounts(self, mock_state, mock_config, mock_tmux, mock_install_hooks):
         mock_config.return_value = HiveConfig.defaults()
         mock_state.return_value = HiveState()
         mock_tmux_instance = MagicMock()
@@ -50,3 +51,4 @@ class TestHiveAppSmoke:
             assert "hive" in str(header.render()).lower()
             footer = app.query_one("#footer-bar", Label)
             assert "n:new" in str(footer.render())
+        mock_install_hooks.assert_called_once()
