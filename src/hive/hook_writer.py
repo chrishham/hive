@@ -11,7 +11,6 @@ from hive.hook_state import remove_session_state, state_dir, state_file_path
 EVENT_TO_STATE = {
     "UserPromptSubmit": "working",
     "Stop": "waiting",
-    "SubagentStop": "waiting",
     "Notification": "waiting",
     "SessionStart": "waiting",
 }
