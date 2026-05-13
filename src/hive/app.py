@@ -504,7 +504,6 @@ class HiveApp(App):
                 if isinstance(item, SessionListItem) and item.data.name == last_active_name:
                     list_view.index = i
                     break
-        list_view.focus()
 
     def _ensure_highlight(self, list_view: SessionListView) -> None:
         children = list(list_view.children)
@@ -512,7 +511,6 @@ class HiveApp(App):
             return
         if list_view.index is None or list_view.index < 0 or list_view.index >= len(children):
             list_view.index = 0
-        list_view.focus()
 
     def _rebuild_list(self, list_view: SessionListView) -> None:
         ready = [s for s in self.session_data_map.values() if s.state != SessionState.BOOTSTRAPPING]
@@ -534,11 +532,10 @@ class HiveApp(App):
                     item.refresh_content()
             return
 
-        target_name = self._last_attached
-        if not target_name:
-            highlighted_item = list_view.highlighted_child
-            if isinstance(highlighted_item, SessionListItem):
-                target_name = highlighted_item.data.name
+        highlighted_item = list_view.highlighted_child
+        target_name = None
+        if isinstance(highlighted_item, SessionListItem):
+            target_name = highlighted_item.data.name
 
         list_view.clear()
         restore_index = 0
@@ -548,7 +545,6 @@ class HiveApp(App):
                 restore_index = i
         if sorted_sessions:
             list_view.index = restore_index
-            list_view.focus()
 
     def _update_preview(self, list_view: SessionListView, preview: PreviewPane) -> None:
         data = list_view.get_session_data()
