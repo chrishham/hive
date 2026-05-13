@@ -88,6 +88,14 @@ class SessionListItem(ListItem):
 
 
 class SessionListView(ListView):
+    def on_click(self, event) -> None:
+        event.prevent_default()
+        event.stop()
+
+    def on_mouse_move(self, event) -> None:
+        event.prevent_default()
+        event.stop()
+
     def get_session_data(self) -> SessionData | None:
         item = self.highlighted_child
         if isinstance(item, SessionListItem):

@@ -8,7 +8,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, ListView, ListItem, RadioButton, RadioSet
+from textual.widgets import Button, Input, Label, ListView, ListItem, RadioButton, RadioSet, Static
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
@@ -52,63 +52,82 @@ def _extract_first_message(path: Path) -> str:
     return "(no messages)"
 
 
-class ProjectPickerScreen(ModalScreen[dict | None]):
+class _KeyboardModalScreen(ModalScreen):
+    def on_click(self, event) -> None:
+        event.prevent_default()
+        event.stop()
+
+    def on_mouse_move(self, event) -> None:
+        event.prevent_default()
+        event.stop()
+
+    def on_mouse_down(self, event) -> None:
+        event.prevent_default()
+        event.stop()
+
+    def on_mouse_up(self, event) -> None:
+        event.prevent_default()
+        event.stop()
+
+
+class ProjectPickerScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, projects: list[dict]) -> None:
         super().__init__()
         self.projects = projects
         self._filtered: list[dict] = list(projects)
+        self._pick_index: int = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker-dialog"):
             yield Label("Select a project:", id="picker-title")
             yield Input(placeholder="Type to filter...", id="picker-filter")
-            yield ListView(id="picker-list")
+            yield Static("", id="picker-list", markup=True)
 
     def on_mount(self) -> None:
-        self._populate_list()
+        self._render_list()
 
-    def _populate_list(self) -> None:
-        list_view = self.query_one("#picker-list", ListView)
-        list_view.clear()
-        for p in self._filtered:
-            list_view.append(ListItem(Label(f"{p['name']}  {p['path']}  {p.get('age', '')}"), name=p["path"]))
-        if self._filtered:
-            list_view.index = 0
+    def _render_list(self) -> None:
+        lines: list[str] = []
+        for i, p in enumerate(self._filtered):
+            if i == self._pick_index:
+                lines.append(f"[bold white on #1a5fb4] {p['name']} [/]")
+            else:
+                lines.append(f" {p['name']}")
+        self.query_one("#picker-list", Static).update("\n".join(lines))
 
     def on_key(self, event) -> None:
-        list_view = self.query_one("#picker-list", ListView)
         if event.key == "up":
-            list_view.action_cursor_up()
+            if self._filtered and self._pick_index > 0:
+                self._pick_index -= 1
+                self._render_list()
             event.prevent_default()
             event.stop()
         elif event.key == "down":
-            list_view.action_cursor_down()
+            if self._filtered and self._pick_index < len(self._filtered) - 1:
+                self._pick_index += 1
+                self._render_list()
             event.prevent_default()
             event.stop()
         elif event.key == "enter":
-            item = list_view.highlighted_child
-            if isinstance(item, ListItem) and item.name:
-                self.dismiss({"path": item.name, "name": Path(item.name).name})
+            if self._filtered and 0 <= self._pick_index < len(self._filtered):
+                p = self._filtered[self._pick_index]
+                self.dismiss({"path": p["path"], "name": p["name"]})
             event.prevent_default()
             event.stop()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         query = event.value.lower()
         self._filtered = [p for p in self.projects if query in p["name"].lower()]
-        self._populate_list()
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        path = event.item.name
-        if path:
-            self.dismiss({"path": path, "name": Path(path).name})
+        self._pick_index = 0
+        self._render_list()
 
     def action_cancel(self) -> None:
         self.dismiss(None)
 
 
-class SessionOptionsScreen(ModalScreen[dict | None]):
+class SessionOptionsScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, project_name: str, project_path: str) -> None:
@@ -203,7 +222,7 @@ class SessionOptionsScreen(ModalScreen[dict | None]):
         self.dismiss(None)
 
 
-class CloneScreen(ModalScreen[dict | None]):
+class CloneScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, default_clone_path: str) -> None:
@@ -234,7 +253,7 @@ class CloneScreen(ModalScreen[dict | None]):
         self.dismiss(None)
 
 
-class FolderExistsScreen(ModalScreen[str | None]):
+class FolderExistsScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, path: str) -> None:
@@ -262,7 +281,7 @@ class FolderExistsScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class ConfirmKillScreen(ModalScreen[bool]):
+class ConfirmKillScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, session_name: str) -> None:
@@ -284,7 +303,7 @@ class ConfirmKillScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
-class UrlPickerScreen(ModalScreen[str | None]):
+class UrlPickerScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, urls: list[tuple[str, bool]]) -> None:
@@ -325,7 +344,7 @@ class UrlPickerScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class RenameScreen(ModalScreen[str | None]):
+class RenameScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, current_name: str) -> None:
@@ -351,7 +370,7 @@ class RenameScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class ErrorScreen(ModalScreen[None]):
+class ErrorScreen(_KeyboardModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel"), ("enter", "cancel", "Cancel")]
 
     def __init__(self, title: str, message: str) -> None:

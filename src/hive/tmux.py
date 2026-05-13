@@ -142,18 +142,31 @@ class TmuxClient:
             "tmux", "set-option", "-t", self.session_name,
             "status-format[0]", fmt,
         ])
-        # Start hidden (we boot on the dashboard).
+        # Start hidden with mouse off (we boot on the dashboard).
         self._run(["tmux", "set-option", "-t", self.session_name, "status", "off"])
-        # Toggle status bar on/off based on active window: hidden on dashboard
-        # (window 0), shown on every other window.
+        self._run(["tmux", "set-option", "-t", self.session_name, "mouse", "off"])
+        # Toggle status bar and mouse based on active window: dashboard
+        # (window 0) gets no status bar and no mouse; session windows get both.
         hook = (
             f'if-shell -F "#{{==:#{{window_index}},0}}" '
-            f'"set-option -t {self.session_name} status off" '
-            f'"set-option -t {self.session_name} status on"'
+            f'"set-option -t {self.session_name} status off \\; '
+            f'set-option -t {self.session_name} mouse off" '
+            f'"set-option -t {self.session_name} status on \\; '
+            f'set-option -t {self.session_name} mouse on"'
         )
         self._run([
             "tmux", "set-hook", "-t", self.session_name,
             "after-select-window", hook,
+        ])
+        # F1 jumps to dashboard (window 0) without needing the prefix key.
+        self._run([
+            "tmux", "bind-key", "-n", "F1",
+            "select-window", "-t", f"{self.session_name}:0",
+        ])
+        # Page Up enters copy mode and scrolls up immediately.
+        self._run([
+            "tmux", "bind-key", "-n", "PPage",
+            "copy-mode", "-u",
         ])
 
     def set_window_option(self, window_index: int, option: str, value: str) -> None:

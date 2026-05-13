@@ -66,32 +66,6 @@ _SPLASH_BASE = (
 
 _DOT_FRAMES = (".    ", ". .  ", ". . .", " . . ", "  . .", "   . ")
 
-def _build_goodbye_splash(count: int, frame: int = 0) -> str:
-    label = "session" if count == 1 else "sessions"
-    dots = _DOT_FRAMES[frame % len(_DOT_FRAMES)]
-    return (
-        "\n"
-        "[#DAA520]         __    __    __    __    __[/]\n"
-        "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
-        "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
-        "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
-        "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
-        "\n"
-        "[bold #FFD700]        ██╗  ██╗██╗██╗   ██╗███████╗[/]\n"
-        "[bold #FFD700]        ██║  ██║██║██║   ██║██╔════╝[/]\n"
-        "[bold #FFD700]        ███████║██║██║   ██║█████╗[/]\n"
-        "[bold #FFD700]        ██╔══██║██║╚██╗ ██╔╝██╔══╝[/]\n"
-        "[bold #FFD700]        ██║  ██║██║ ╚████╔╝ ███████╗[/]\n"
-        "[bold #FFD700]        ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚══════╝[/]\n"
-        "\n"
-        f"[#B8860B]      Shutting down {count} {label} {dots}[/]\n"
-        "\n"
-        "[#DAA520]         __    __    __    __    __[/]\n"
-        "[#DAA520]        /  \\__/  \\__/  \\__/  \\__/  [/]\\\n"
-        "[#DAA520]        \\__/  \\__/  \\__/  \\__/  \\__/[/]\n"
-        "\n"
-    )
-
 
 def _build_splash_text(frame: int) -> str:
     dots = _DOT_FRAMES[frame % len(_DOT_FRAMES)]
@@ -208,28 +182,15 @@ class HiveApp(App):
             self._after_startup()
 
     async def _startup_flow(self) -> None:
-        # Run blocking spawn off-thread so the splash keeps painting.
         spawned = await asyncio.to_thread(self._restore_sessions)
-        shortcuts = "Ctrl-b 0:dashboard  Ctrl-b n/p:next/prev  Shift+drag:select  Ctrl+Shift+C:copy"
-        await asyncio.to_thread(self.tmux.setup_shortcut_bar, shortcuts)
-        if spawned:
-            await self._animate_warmup_until_loaded(spawned, max_wait=30.0)
-            self._show_splash(False)
-            purged = self._purge_dead_sessions(spawned)
-            if purged:
-                preview = ", ".join(purged[:3])
-                more = f" (+{len(purged) - 3} more)" if len(purged) > 3 else ""
-                self._set_info_banner(
-                    f"Removed {len(purged)} stale session(s) that could not resume: {preview}{more}"
-                )
-            else:
-                self._set_info_banner("")
-        else:
-            # Nothing actually got spawned — hide splash so dashboard appears.
-            self._show_splash(False)
+        self._show_splash(False)
         self._after_startup()
+        if spawned:
+            await self._wait_and_purge(spawned)
 
     def _after_startup(self) -> None:
+        shortcuts = "F1:dashboard  Ctrl-b n/p:next/prev  Shift+drag:select  Ctrl+Shift+C:copy"
+        self.tmux.setup_shortcut_bar(shortcuts)
         if not hook_installed():
             from hive.install_hooks import install_hooks
             if not install_hooks():
@@ -251,47 +212,33 @@ class HiveApp(App):
         splash.refresh(layout=True)
         main.refresh(layout=True)
 
-    async def _animate_warmup_until_loaded(
-        self, spawned: list[str], max_wait: float = 30.0
-    ) -> None:
-        """Hold the splash + animate the spinner/dots until every spawned
-        session has either loaded (state != BOOTSTRAPPING) or died. Capped at
-        max_wait so we don't hang forever if hooks aren't installed and pane
-        detection can't decide."""
-        spinner = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    async def _wait_and_purge(self, spawned: list[str], max_wait: float = 15.0) -> None:
+        """Wait in the background for spawned sessions to finish bootstrapping,
+        then purge any that died. The dashboard is already visible and
+        sessions appear via normal polling as they become ready."""
         loop = asyncio.get_event_loop()
         end = loop.time() + max_wait
-        try:
-            splash = self.query_one("#splash", Static)
-        except Exception:
-            splash = None
-
-        i = 0
         while loop.time() < end:
             pending = await asyncio.to_thread(self._pending_spawned, spawned)
             if not pending:
                 break
-            if splash is not None:
-                splash.update(_build_splash_text(i))
-            char = spinner[i % len(spinner)]
-            total = len(spawned)
-            done = total - len(pending)
+            await asyncio.sleep(1.0)
+        purged = self._purge_dead_sessions(spawned)
+        if purged:
+            preview = ", ".join(purged[:3])
+            more = f" (+{len(purged) - 3} more)" if len(purged) > 3 else ""
             self._set_info_banner(
-                f"{char}  Warming up — {done}/{total} session(s) loaded, waiting for {len(pending)}…"
+                f"Removed {len(purged)} stale session(s) that could not resume: {preview}{more}"
             )
-            await asyncio.sleep(0.15)
-            i += 1
 
     def _pending_spawned(self, spawned: list[str]) -> list[str]:
-        """Return spawned names that are still alive *and* still bootstrapping.
-        Sessions whose tmux window died are excluded — they'll be purged."""
         windows = self.tmux.list_windows()
         alive = {w["name"]: w["index"] for w in windows if w["index"] != 0}
         pending: list[str] = []
         for name in spawned:
             idx = alive.get(name)
             if idx is None:
-                continue  # window died — will be purged after the loop
+                continue
             hook_state, _ = read_session_state_with_meta(name)
             if hook_state is not None and hook_state != SessionState.BOOTSTRAPPING:
                 continue
@@ -844,44 +791,6 @@ class HiveApp(App):
             self.tmux.select_window(data.tmux_window)
 
     async def action_quit_app(self) -> None:
-        windows = self.tmux.list_windows()
-        session_windows = [w for w in windows if w["index"] != 0]
-        count = len(session_windows)
-
-        if count:
-            self._show_goodbye_splash(count)
-            for win in session_windows:
-                self.tmux.send_keys(win["index"], "q")
-            await self._wait_sessions_quit(session_windows, count, max_wait=15.0)
-
         self.tmux.kill_session()
         self.exit()
 
-    def _show_goodbye_splash(self, count: int) -> None:
-        splash = self.query_one("#splash", Static)
-        splash.update(_build_goodbye_splash(count))
-        self._show_splash(True)
-
-    async def _wait_sessions_quit(
-        self, session_windows: list[dict], count: int, max_wait: float = 15.0
-    ) -> None:
-        loop = asyncio.get_event_loop()
-        end = loop.time() + max_wait
-        target_indices = {w["index"] for w in session_windows}
-        try:
-            splash = self.query_one("#splash", Static)
-        except Exception:
-            splash = None
-        i = 0
-        while loop.time() < end:
-            alive = await asyncio.to_thread(self._alive_window_count, target_indices)
-            if alive == 0:
-                break
-            if splash is not None:
-                splash.update(_build_goodbye_splash(count, i))
-            await asyncio.sleep(0.15)
-            i += 1
-
-    def _alive_window_count(self, target_indices: set[int]) -> int:
-        windows = self.tmux.list_windows()
-        return sum(1 for w in windows if w["index"] in target_indices)

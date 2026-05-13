@@ -56,10 +56,6 @@ SessionListItem.-highlight {
     background: $primary 30%;
 }
 
-SessionListItem:hover {
-    background: $primary 20%;
-}
-
 .session-header {
     text-style: bold;
 }

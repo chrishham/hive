@@ -18,6 +18,9 @@ PROMPT_PATTERNS = [
     re.compile(r"│\s*>\s*│", re.MULTILINE),
     re.compile(r"❯❯\s+(bypass permissions|plan|default)", re.MULTILINE),
     re.compile(r"\(shift\+tab to cycle\)"),
+    re.compile(r"Enter to confirm"),
+    re.compile(r"Do you want to proceed\?"),
+    re.compile(r"\(Y\)es\b.*\(N\)o\b", re.IGNORECASE),
 ]
 
 WORKING_PATTERNS = [

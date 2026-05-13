@@ -106,6 +106,9 @@ def main() -> None:
         print("Usage: hive [attach|list|new <path>|install-hooks|uninstall-hooks]")
         sys.exit(1)
 
+    sys.stdout.write("\033]0;Hive\007")
+    sys.stdout.flush()
+
     if os.environ.get("TMUX"):
         DASHBOARD_LOG.parent.mkdir(parents=True, exist_ok=True)
         _rotate_dashboard_log()
