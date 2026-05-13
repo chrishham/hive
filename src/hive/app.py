@@ -107,11 +107,7 @@ def _validate_clone_url(url: str) -> str:
 
 
 def _session_sort_key(s) -> tuple:
-    is_waiting = s.state == SessionState.WAITING
-    # Waiting sessions first; within waiting, oldest updated_at first.
-    # Empty/missing waiting_since sorts last among waiting sessions.
-    waiting_since = s.waiting_since or "\uffff"
-    return (not is_waiting, waiting_since if is_waiting else "", s.name)
+    return (s.name,)
 
 
 _CRED_URL_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@")
