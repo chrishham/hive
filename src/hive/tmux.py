@@ -24,7 +24,7 @@ class TmuxClient:
         if command:
             args.append(command)
         self._run(args)
-        self._run(["tmux", "set-option", "-t", self.session_name, "mouse", "on"])
+        self._run(["tmux", "set-option", "-t", self.session_name, "mouse", "off"])
 
     def list_windows(self) -> list[dict]:
         result = self._run(
@@ -128,11 +128,8 @@ class TmuxClient:
         self._run(["tmux", "set-option", "-t", self.session_name, "status", "off"])
 
     def setup_shortcut_bar(self, shortcuts: str) -> None:
-        # Single status row styled to match the dashboard footer:
-        # muted light-gray text on a dark-gray background, left-aligned with padding.
         bg = "colour236"
         fg = "colour248"
-        # status-style sets the row's base color so the unused right side fills cleanly.
         self._run([
             "tmux", "set-option", "-t", self.session_name,
             "status-style", f"bg={bg},fg={fg}",
@@ -142,28 +139,29 @@ class TmuxClient:
             "tmux", "set-option", "-t", self.session_name,
             "status-format[0]", fmt,
         ])
-        # Start hidden with mouse off (we boot on the dashboard).
         self._run(["tmux", "set-option", "-t", self.session_name, "status", "off"])
         self._run(["tmux", "set-option", "-t", self.session_name, "mouse", "off"])
-        # Toggle status bar and mouse based on active window: dashboard
-        # (window 0) gets no status bar and no mouse; session windows get both.
+
         hook = (
             f'if-shell -F "#{{==:#{{window_index}},0}}" '
-            f'"set-option -t {self.session_name} status off \\; '
-            f'set-option -t {self.session_name} mouse off" '
-            f'"set-option -t {self.session_name} status on \\; '
-            f'set-option -t {self.session_name} mouse on"'
+            f'"set-option -t {self.session_name} status off" '
+            f'"set-option -t {self.session_name} status on"'
         )
         self._run([
             "tmux", "set-hook", "-t", self.session_name,
             "after-select-window", hook,
         ])
-        # F1 jumps to dashboard (window 0) without needing the prefix key.
+
+        # Strip ALL default bindings so nothing interferes.
+        self._run(["tmux", "unbind-key", "-a", "-T", "prefix"])
+        self._run(["tmux", "unbind-key", "-a", "-T", "root"])
+
+        # F1 jumps to dashboard (window 0) without prefix.
         self._run([
             "tmux", "bind-key", "-n", "F1",
             "select-window", "-t", f"{self.session_name}:0",
         ])
-        # Page Up enters copy mode and scrolls up immediately.
+        # Page Up enters copy mode and scrolls up.
         self._run([
             "tmux", "bind-key", "-n", "PPage",
             "copy-mode", "-u",

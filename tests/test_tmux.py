@@ -36,7 +36,7 @@ class TestTmuxClient:
             text=False,
         )
         mock_run.assert_any_call(
-            ["tmux", "set-option", "-t", "test-hive", "mouse", "on"],
+            ["tmux", "set-option", "-t", "test-hive", "mouse", "off"],
             capture_output=True,
             text=False,
         )

@@ -185,7 +185,7 @@ class HiveApp(App):
             await self._wait_and_purge(spawned)
 
     def _after_startup(self) -> None:
-        shortcuts = "F1:dashboard  Ctrl-b n/p:next/prev  Shift+drag:select  Ctrl+Shift+C:copy"
+        shortcuts = "F1:dashboard  PgUp/PgDn:scroll"
         self.tmux.setup_shortcut_bar(shortcuts)
         if not hook_installed():
             from hive.install_hooks import install_hooks
@@ -484,26 +484,11 @@ class HiveApp(App):
 
     def _sync_dashboard_focus(self, list_view: SessionListView, windows: list[dict]) -> None:
         active_idx: int | None = None
-        last_active_name: str | None = None
         for win in windows:
             if win.get("active"):
                 active_idx = win["index"]
-            if win.get("last_active") and win["index"] != 0:
-                last_active_name = win["name"]
-
-        prev = self._prev_active_window
+                break
         self._prev_active_window = active_idx
-
-        if active_idx != 0:
-            return
-        if prev is None or prev == 0:
-            return
-
-        if last_active_name is not None:
-            for i, item in enumerate(list_view.children):
-                if isinstance(item, SessionListItem) and item.data.name == last_active_name:
-                    list_view.index = i
-                    break
 
     def _ensure_highlight(self, list_view: SessionListView) -> None:
         children = list(list_view.children)
