@@ -12,7 +12,7 @@ TUI orchestrator (Python/Textual πάνω σε tmux) για πολλαπλές �
 | 3 | Codex findings cleanup: safety module, name validation, atomic writes, hardening | ✅ |
 | 4 | Session synopsis (LLM περίληψη συνεδρίας, cache, Vertex/Anthropic) | ✅ |
 | 5 | UI polish: splash, non-intrusive hooks, `uninstall-hooks`, σταθερή σειρά λίστας, απλοποίηση tmux bindings | ✅ |
-| 6 | hive-go: rewrite σε Go (Bubbletea + PTY), χωρίς tmux, 19 tasks | ⏳ σχεδιασμένο (spec + plan), υλοποίηση δεν φαίνεται στο repo |
+| 6 | hive-go: rewrite σε Go (Bubbletea + PTY), χωρίς tmux, 19 tasks | 🚧 υλοποίηση σε εξέλιξη στο ξεχωριστό repo `~/Projects/hive-go` (VTE multiplexer, restore flow κ.ά.· 19 tasks δεν έχουν επιβεβαιωθεί ως ολοκληρωμένα) |
 
 ## Αποφάσεις (να μην ξαναρωτηθούν)
 
@@ -37,6 +37,8 @@ TUI orchestrator (Python/Textual πάνω σε tmux) για πολλαπλές �
 ## Ιδέες / μελλοντικά
 
 - Image paste στο hive-go (δυνατό λόγω άμεσης πρόσβασης σε PTY).
+- Janitor για παλιά `.json.tmp` αρχεία στο hook state dir μετά από crash (`docs/superpowers/specs/2026-05-11-codex-findings-design.md`).
+- Διάσπαση του `app.py` σε μικρότερα modules (`docs/superpowers/specs/2026-05-11-codex-findings-design.md`, non-goals).
 
 ## Ιστορικό
 
@@ -44,3 +46,4 @@ TUI orchestrator (Python/Textual πάνω σε tmux) για πολλαπλές �
 - 2026-05-11: hook-based state detection, codex findings cleanup, session synopsis (specs/plans)
 - 2026-05-17: hive-go design spec και implementation plan
 - 2026-10-24: ROADMAP δημιουργήθηκε από ανασκόπηση repo/memory
+- 2026-10-24: tidy — φάση 6 σε 🚧 (το hive-go έχει commits στο `~/Projects/hive-go`), προστέθηκαν 2 ιδέες από το codex-findings spec
